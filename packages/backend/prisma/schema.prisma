@@ -1,0 +1,309 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql" // Or your preferred database
+  url      = env("DATABASE_URL")
+}
+// --- Enums based on user specification ---
+enum Channel {
+  AIRBNB
+  AGODA
+  BOOKING_COM
+  CTRIP
+  EXPEDIA
+  TRAVELOKA
+  KLOOK
+  DIRECT // Added for direct bookings
+  OTHER // Added for other sources
+}
+enum PaymentMethod {
+  OTA_COLLECT
+  HOTEL_COLLECT
+  UPC // Assuming this is a specific payment type
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  MOMO
+}
+enum PaymentStatus {
+  PAID
+  PARTIALLY_PAID
+  UNPAID
+  REFUNDED
+}
+enum BookingStatus {
+  CONFIRMED
+  PENDING
+  CANCELLED
+  NO_SHOW
+}
+enum DepositMethod {
+  CASH
+  BANK_TRANSFER
+  MOMO
+  UPC
+  CREDIT_CARD // Added for consistency
+}
+enum DepositStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FORFEITED
+}
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN // Added
+  MANAGER // Added
+  PARTNER
+  STAFF
+}
+// --- Models ---
+model Tenant {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  users       User[]
+  properties  Property[]
+  roomTypes   RoomType[]
+  bookings    Booking[]
+  payments    Payment[] // Relation to Payments
+  invoices    Invoice[] // Relation to Invoices
+  messages    Message[] // Relation to Messages
+  auditLogs   AuditLog[] // Relation to Audit Logs
+}
+
+model Property {
+  id          String    @id @default(uuid())
+  name        String
+  address     String?
+  district    String?
+  city        String?
+  region      String?
+  // Add other property fields as needed
+  ownerId     String // Relation to the User who owns the property (now required)
+  userId      String // Relation to the User who manages the property
+  tenantId    String // Relation to the Tenant
+  
+  // Relations
+  owner       User      @relation("OwnedProperties", fields: [ownerId], references: [id]) // Relation for owner (now required)
+  user        User      @relation("ManagedProperties", fields: [userId], references: [id]) // Relation for manager
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  bookings    Booking[] // Relation to Bookings
+  roomTypes   RoomType[] // Relation to RoomTypes
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model RoomType {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  maxOccupancy Int
+  price       Decimal   @db.Decimal(10, 2)
+  occupancy   Int       @default(2)
+  // Add other room type fields
+  propertyId  String
+  tenantId    String // Relation to the Tenant
+  
+  // Relations
+  property    Property  @relation(fields: [propertyId], references: [id])
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  bookings    Booking[] // Relation to Bookings (if booking is tied to room type)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Booking {
+  id                  String        @id @default(uuid())
+  guestName           String
+  contactEmail        String?
+  contactPhone        String
+  channel             Channel
+  reference           String?       // Booking reference from channel or internal
+  checkIn             DateTime
+  checkOut            DateTime
+  nights              Int           // Should be calculated
+  adults              Int
+  children            Int           @default(0)
+  totalAmount         Decimal       @db.Decimal(10, 2)
+  commission          Decimal?      @db.Decimal(10, 2) // Commission amount
+  netRevenue          Decimal       @db.Decimal(10, 2) // Should be calculated (totalAmount - commission)
+  currency            String        @default("VND")
+  paymentMethod       PaymentMethod
+  paymentChannel      String?       // Specific channel if applicable (e.g., Stripe transaction ID)
+  paymentStatus       PaymentStatus @default(UNPAID)
+  amountPaid          Decimal       @default(0.00) @db.Decimal(10, 2)
+  outstandingBalance  Decimal       @db.Decimal(10, 2) // Should be calculated
+  refundedAmount      Decimal?      @db.Decimal(10, 2)
+  invoiceUrl          String?
+  assignedStaff       String?       // Name or ID of staff member
+  specialRequests     String?
+  internalNotes       String?
+  bookingStatus       BookingStatus @default(PENDING)
+  
+  // Deposit Fields
+  depositAmount       Decimal?      @db.Decimal(10, 2)
+  depositDate         DateTime?
+  depositMethod       DepositMethod?
+  depositStatus       DepositStatus? @default(PENDING)
+  
+  // Timestamps
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  
+  // Relations
+  propertyId          String
+  property            Property      @relation(fields: [propertyId], references: [id])
+  roomTypeId          String        // Required: Link directly to room type
+  roomType            RoomType      @relation(fields: [roomTypeId], references: [id])
+  userId              String        // Link to the user who created/owns this booking context
+  user                User          @relation(fields: [userId], references: [id])
+  tenantId            String        // Relation to the Tenant
+  tenant              Tenant        @relation(fields: [tenantId], references: [id])
+  payments            Payment[]     // Relation to detailed Payment records
+}
+
+model User {
+  id          String     @id @default(uuid())
+  email       String     @unique
+  name        String?
+  password    String     // Hashed password
+  role        UserRole   @default(STAFF) // Using enum for roles
+  tenantId    String?    // Optional: Some users (SUPER_ADMIN) may not belong to a tenant
+  
+  // Relations
+  tenant      Tenant?    @relation(fields: [tenantId], references: [id])
+  properties  Property[] @relation("ManagedProperties") // Properties managed by this user
+  ownedProperties Property[] @relation("OwnedProperties") // Properties owned by this user
+  bookings    Booking[]  // Bookings created by/associated with this user
+  collectedPayments Payment[] // Payments collected by this user
+  auditLogs   AuditLog[] // Audit logs related to this user
+  sentMessages Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+
+// --- Enums for Phase 2 ---
+
+enum PaymentType {
+  HOTEL_COLLECT
+  OTA_COLLECT
+  // UPC removed as per new requirement
+}
+
+enum PaymentMethodV2 {
+  CASH
+  BANK_TRANSFER
+  MOMO
+  NINEPAY // Changed back from 9PAY if needed, or keep as NINEPAY
+  ONEPAY
+  OTA_TRANSFER
+  BANK_PERSONAL // Added
+  // CARD removed
+  // OTHER removed
+}
+
+enum PaymentStatusV2 {
+  PAID
+  UNPAID
+  PARTIALLY_PAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  VOID
+}
+
+enum MessageType {
+  SYSTEM
+  PRIVATE
+}
+
+// --- Models for Phase 2 ---
+
+model Payment {
+  id            String          @id @default(uuid())
+  amount        Float
+  paymentDate   DateTime
+  paymentType   PaymentType
+  method        PaymentMethodV2
+  status        PaymentStatusV2 @default(UNPAID)
+  receivedFrom  String?
+  note          String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relations
+  bookingId     String
+  booking       Booking         @relation(fields: [bookingId], references: [id])
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  collectedById String?         // Optional: ID of the user who collected the payment
+  collectedBy   User?           @relation(fields: [collectedById], references: [id])
+  invoices      Invoice[]       // Many-to-many with Invoice (Prisma implicit)
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique // Needs logic for generation
+  totalAmount   Float
+  status        InvoiceStatus @default(DRAFT)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  payments      Payment[]     // Many-to-many with Payment (Prisma implicit)
+}
+
+
+model Message {
+  id          String      @id @default(uuid())
+  messageType MessageType
+  content     String
+  isRead      Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  senderId    String?     // User ID of the sender (null for SYSTEM messages)
+  sender      User?       @relation("SentMessages", fields: [senderId], references: [id])
+  recipientId String?     // User ID of the recipient (null for SYSTEM messages sent to all)
+  recipient   User?       @relation("ReceivedMessages", fields: [recipientId], references: [id])
+}
+
+
+
+
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  action      String   // e.g., CREATE_BOOKING, UPDATE_PAYMENT_STATUS
+  resource    String   // e.g., Booking, Payment, Property
+  resourceId  String   // ID of the affected resource
+  metadata    Json?    // Optional: Store details like old/new values
+  createdAt   DateTime @default(now())
+
+  // Relations
+  userId      String   // User who performed the action
+  user        User     @relation(fields: [userId], references: [id])
+  tenantId    String   // Tenant context for the action
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+}

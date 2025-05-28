@@ -1,0 +1,17 @@
+# Thư mục node modules
+node_modules/
+
+# Thư mục build output
+**/dist/
+
+# Env files
+.env
+.env.*.local
+
+# Lock file
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Thêm nếu cần
+.DS_Store

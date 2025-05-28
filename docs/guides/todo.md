@@ -1,0 +1,56 @@
+# Project PMS Evaluation Todo List
+
+- [X] Read root README.md (/home/ubuntu/project_pms/PMS/pms-project/README.md)
+- [X] Read root package.json (/home/ubuntu/project_pms/PMS/pms-project/package.json)
+- [ ] Explore `docs` directory
+    - [X] Explore `docs/api` directory
+        - [X] Read `docs/api/README.md`
+        - [X] Read `docs/api/api_documentation.md`
+        - [X] Read `docs/api/api_documentation_phase2.md`
+        - [X] Read `docs/api/api_documentation_phase2_final.md`
+    - [X] Explore `docs/architecture` directory
+        - [X] Read `docs/architecture/README.md`
+        - [X] Read `docs/architecture/analysis_architecture.md`
+        - [X] Read `docs/architecture/analysis_tech_stack_gaps.md`
+        - [X] Read `docs/architecture/calendar_module_architecture.md`
+        - [X] Read `docs/architecture/pms_architecture_phase2.md`
+        - [X] Read `docs/architecture/project_structure.md`
+        - [X] Read `docs/architecture/technology_stack.md`
+        - [X] Read `docs/architecture/ui_ux_architecture_design.md`
+    - [ ] Explore `docs/design` directory
+        - [X] Read `docs/design/calendar_integration_guide.md`
+        - [X] Read `docs/design/calendar_ui_ux_libraries.md`
+        - [X] Read `docs/design/message_module_design.md`
+        - [ ] Read `docs/design/pms_ui_ux_design.md`
+        - [ ] Read `docs/design/rbac_security_design.md`
+        - [ ] Read `docs/design/rbac_security_guide.md`
+        - [ ] Read `docs/design/test_suite_documentation.md`
+        - [ ] Read `docs/design/ui_ux_design_plan.md`
+        - [ ] Read `docs/design/ui_ux_documentation.md`
+        - [ ] Read `docs/design/ui_ux_requirements_analysis.md`
+    - [ ] Explore `docs/guides` directory
+        - [ ] Read files in `docs/guides`
+    - [ ] Explore `docs/reports` directory
+        - [ ] Read files in `docs/reports`
+- [ ] Explore `packages` directory
+    - [ ] Read `packages/README.md` (if exists)
+    - [ ] Explore `packages/backend`
+        - [ ] Read `packages/backend/README.md` (if exists)
+        - [ ] Read `packages/backend/package.json` (if exists)
+        - [ ] Analyze backend source code structure
+    - [ ] Explore `packages/frontend`
+        - [ ] Read `packages/frontend/README.md` (if exists)
+        - [ ] Read `packages/frontend/package.json` (if exists)
+        - [ ] Analyze frontend source code structure
+- [ ] Explore `scripts` directory
+    - [ ] Read `scripts/README.md` (if exists)
+    - [ ] Analyze scripts
+- [ ] Read root `coverage-report.js`
+- [ ] Read root `eslint.config.js`
+- [ ] Read root `jest.config.js`
+- [ ] Read root `pnpm-workspace.yaml`
+- [ ] Read root `tsconfig.base.json`
+- [ ] Analyze overall project structure and technologies
+- [ ] Evaluate project based on findings
+- [ ] Write expert review document
+- [ ] Send review to user
