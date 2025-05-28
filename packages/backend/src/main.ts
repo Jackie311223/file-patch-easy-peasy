@@ -1,28 +1,29 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common'; // Import ValidationPipe
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS for frontend access
+  // Enable CORS to allow frontend requests
   app.enableCors({
-    origin: '*', // Allow all origins for testing, adjust for production
+    origin: '*', // Allow all origins (only for development; restrict in production)
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
 
   // Use global validation pipe
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true, // Strip properties that do not have any decorators
-    forbidNonWhitelisted: true, // Throw errors if non-whitelisted values are provided
-    transform: true, // Automatically transform payloads to DTO instances
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // Remove unknown fields
+      forbidNonWhitelisted: true, // Throw error for unknown fields
+      transform: true, // Auto transform payload to DTO
+    }),
+  );
 
-  // Define the port, using environment variable or default
-  const port = process.env.PORT || 3000;
+  // Set port (Manus will auto-assign PORT environment variable)
+  const port = process.env.PORT || 3001;
   await app.listen(port);
-  console.log(`Application is running on: ${await app.getUrl()}`);
+  console.log(`🚀 Application is running on: ${await app.getUrl()}`);
 }
 bootstrap();
-
