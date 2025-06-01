@@ -1,0 +1,44 @@
+# Bỏ qua thư mục node_modules, file log, thư mục build và file .env
+
+# Node modules
+node_modules
+npm-debug.log
+yarn-error.log
+*-debug.log
+*-error.log
+
+# Build output
+build
+
+# Environment files (nên được truyền vào container qua --env-file hoặc biến môi trường)
+.env
+.env.*
+!.env.example 
+
+# Prisma (nếu schema được copy riêng và client được generate trong image)
+# Bỏ qua file database SQLite cục bộ nếu có
+prisma/*.db
+prisma/*-journal.db
+# node_modules trong prisma (nếu client được generate cục bộ và không cần thiết)
+# prisma/node_modules 
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE / OS specific
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+*.swp
+*~
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Test reports, coverage
+coverage/
+.nyc_output/

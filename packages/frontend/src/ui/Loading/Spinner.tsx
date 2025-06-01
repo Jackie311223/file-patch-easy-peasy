@@ -1,11 +1,14 @@
 import React from 'react';
+import classNames from 'classnames';
 
-interface SpinnerProps {
+// Đổi tên interface props cho nhất quán nếu component đổi tên
+export interface LoadingSpinnerProps { 
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }
 
-const Spinner: React.FC<SpinnerProps> = ({ size = 'md', className = '' }) => {
+// Thay đổi ở đây: đổi tên component thành LoadingSpinner và export trực tiếp const
+export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({ size = 'md', className = '' }) => {
   const sizeClasses = {
     sm: 'h-4 w-4',
     md: 'h-8 w-8',
@@ -15,7 +18,7 @@ const Spinner: React.FC<SpinnerProps> = ({ size = 'md', className = '' }) => {
   return (
     <div className={`flex justify-center items-center ${className}`}>
       <svg 
-        className={`animate-spin ${sizeClasses[size]} text-primary`} 
+        className={`animate-spin ${sizeClasses[size]} text-primary`} // Giả sử bạn có class 'text-primary' trong CSS/Tailwind
         xmlns="http://www.w3.org/2000/svg" 
         fill="none" 
         viewBox="0 0 24 24"
@@ -37,5 +40,7 @@ const Spinner: React.FC<SpinnerProps> = ({ size = 'md', className = '' }) => {
     </div>
   );
 };
+LoadingSpinner.displayName = 'LoadingSpinner'; // Cập nhật displayName
 
-export default Spinner;
+// Bỏ dòng 'export default Spinner;' nếu bạn muốn sử dụng named export như trên
+// export default Spinner;

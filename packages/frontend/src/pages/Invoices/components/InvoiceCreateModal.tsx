@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Dialog, { DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/Dialog";
-import Button from "@/ui/Button";
-import Input from "@/ui/Input";
-import Label from "@/ui/Label";
-import Checkbox from "@/ui/Checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/Table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/Select";
-import DatePicker from "@/ui/DatePicker";
-import Spinner from "@/ui/Loading/Spinner";
+import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import Dialog, { DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/Dialog"; 
+import { Button } from "@/ui/Button";
+import { Input } from "@/ui/Input"; 
+import { Label } from "@/ui/Label";
+import Checkbox from "@/ui/Checkbox"; 
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/Table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/Select';
+import DatePicker from "@/ui/DatePicker"; 
+import { LoadingSpinner } from "@/ui/Loading/Spinner";
+import { Textarea } from "@/ui/Textarea"; 
 import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/hooks/useAuth";
-import { getPayments, PaymentsResponse, Payment } from "@/api/paymentsApi";
-import { useGetBookings, BookingsResponse, Booking } from "@/api/bookingsApi"; // Use the hook
-import { createInvoice } from "@/api/invoicesApi";
+import { getPayments, PaymentsResponse, Payment, GetPaymentsParams } from "@/api/paymentsApi"; 
+import { useGetBookings, Booking } from "@/api/bookingsApi"; 
+// Sửa: Bỏ import InvoiceStatus vì nó không được export hoặc không cần thiết nếu status là string literal
+import { createInvoice, CreateInvoicePayload } from "@/api/invoicesApi"; 
 import { formatCurrency, formatDate } from "@/utils/formatters";
+
+// CreateInvoicePayload được import từ invoicesApi.ts, đảm bảo nó được export ở đó
+// và có trường status với union type phù hợp (ví dụ: "DRAFT" | "SENT" | ...)
 
 interface InvoiceCreateModalProps {
   isOpen: boolean;
@@ -28,50 +33,49 @@ const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
   onSuccess,
 }) => {
   const { user } = useAuth();
-  const { toast } = useToast();
+  const { toast } = useToast(); 
   const queryClient = useQueryClient();
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | undefined>(new Date());
   const [notes, setNotes] = useState<string>("");
 
-  // Fetch bookings using the hook
-  const { data: bookingsResponse, isLoading: isLoadingBookings } = useGetBookings({ status: "CONFIRMED" });
-  // Extract the data array
+  const { data: bookingsResponse, isLoading: isLoadingBookings } = useGetBookings({ status: "CONFIRMED", limit: 1000 });
   const bookings: Booking[] = bookingsResponse?.data || [];
 
-  // Fetch unpaid payments for the selected booking
   const { data: paymentsResponse, isLoading: isLoadingPayments } = useQuery<PaymentsResponse, Error>({
     queryKey: ["payments", { bookingId: selectedBookingId, status: "UNPAID" }],
-    // Pass correct params to getPayments
+    // Sửa: Bỏ invoiceIdIsNull nếu GetPaymentsParams không có
     queryFn: () => getPayments({ bookingId: selectedBookingId, status: "UNPAID" }), 
     enabled: !!selectedBookingId, 
   });
-  const payments: Payment[] = paymentsResponse?.data || []; 
+  const availablePayments: Payment[] = paymentsResponse?.data || []; 
 
-  const createInvoiceMutation = useMutation<any, Error, any>({
+  const createInvoiceMutation = useMutation<any, Error, CreateInvoicePayload>({ 
     mutationFn: createInvoice,
     onSuccess: () => {
-      toast({ title: "Invoice Created", variant: "success" });
+      toast({ title: "Invoice Created", description: "New invoice has been successfully created.", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["payments", { bookingId: selectedBookingId }] }); 
       resetForm();
       onSuccess();
+      onClose();
     },
     onError: (error: any) => {
       toast({ 
         title: "Error Creating Invoice", 
-        description: error?.response?.data?.message || error.message, 
+        description: error?.response?.data?.message || error.message || "An unexpected error occurred.", 
         variant: "destructive" 
       });
     },
   });
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setSelectedBookingId("");
     setSelectedPaymentIds([]);
     setDueDate(new Date());
     setNotes("");
-  };
+  }, []);
 
   const handleCheckboxChange = (paymentId: string) => {
     setSelectedPaymentIds((prev) =>
@@ -81,30 +85,31 @@ const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
     );
   };
 
-  const handleSelectAll = () => {
-    if (payments && payments.length > 0) {
-      if (selectedPaymentIds.length === payments.length) {
-        setSelectedPaymentIds([]);
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => { 
+    const isChecked = event.target.checked;
+    if (availablePayments && availablePayments.length > 0) {
+      if (isChecked) {
+        setSelectedPaymentIds(availablePayments.map((p) => p.id));
       } else {
-        setSelectedPaymentIds(payments.map((p) => p.id));
+        setSelectedPaymentIds([]);
       }
     }
   };
 
   const handleSubmit = () => {
     if (!selectedBookingId || !dueDate) {
-      toast({ title: "Missing Information", description: "Please select a booking and due date.", variant: "destructive" });
+      toast({ title: "Missing Information", description: "Please select a booking and set a due date.", variant: "destructive" });
       return;
     }
-    if (selectedPaymentIds.length === 0) {
-      toast({ title: "No Payments Selected", description: "Please select at least one payment to include.", variant: "destructive" });
-      return;
-    }
+    // if (selectedPaymentIds.length === 0) { // Allow creating invoice without payments
+    //   toast({ title: "No Payments Selected", description: "Please select at least one payment to include.", variant: "destructive" });
+    //   return;
+    // }
 
-    const invoiceData = {
+    const invoiceData: CreateInvoicePayload = {
       bookingId: selectedBookingId,
-      dueDate: dueDate.toISOString(),
-      status: "DRAFT",
+      dueDate: dueDate.toISOString().split('T')[0], 
+      status: "DRAFT", // Đảm bảo "DRAFT" là giá trị hợp lệ cho CreateInvoicePayload.status
       notes,
       paymentIds: selectedPaymentIds,
       tenantId: user?.tenantId,
@@ -116,25 +121,30 @@ const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
     setSelectedPaymentIds([]);
   }, [selectedBookingId]);
 
+  useEffect(() => {
+    if (!isOpen) {
+        resetForm();
+    }
+  }, [isOpen, resetForm]);
+
+
   return (
-    <Dialog isOpen={isOpen} onClose={onClose}>
+    <Dialog open={isOpen} onOpenChange={(openState) => { if (!openState) onClose(); }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create New Invoice</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          {/* Booking Selection */}
+        <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
           <div className="space-y-1">
-            <Label htmlFor="bookingId">Booking</Label>
+            <Label htmlFor="booking-select-invoice">Booking</Label>
             <Select value={selectedBookingId} onValueChange={setSelectedBookingId}>
-              <SelectTrigger id="bookingId">
+              <SelectTrigger id="booking-select-invoice">
                 <SelectValue placeholder="Select a booking" />
               </SelectTrigger>
               <SelectContent>
                 {isLoadingBookings ? (
-                  <SelectItem value="loading" disabled>Loading...</SelectItem>
+                  <SelectItem value="loading" disabled>Loading bookings...</SelectItem>
                 ) : (
-                  // Ensure bookings is an array before mapping
                   Array.isArray(bookings) && bookings.map((booking) => (
                     <SelectItem key={booking.id} value={booking.id}>
                       {booking.bookingCode} - {booking.guestName}
@@ -145,51 +155,55 @@ const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
             </Select>
           </div>
 
-          {/* Due Date */}
           <div className="space-y-1">
-            <Label htmlFor="dueDate">Due Date</Label>
-            {/* Remove invalid id prop */}
-            <DatePicker value={dueDate} onChange={setDueDate} /> 
+            <Label htmlFor="invoice-due-date-picker">Due Date</Label>
+            <DatePicker 
+              value={dueDate} 
+              onChange={setDueDate} 
+              // Sửa: Bỏ prop 'id' nếu DatePickerProps không có.
+              // id="invoice-due-date-picker" 
+            /> 
           </div>
 
-          {/* Payments Table */}
           <div className="space-y-2">
             <Label>Select Payments to Include</Label>
             {isLoadingPayments ? (
-              <Spinner />
-            ) : payments && payments.length > 0 ? (
+              <div className="flex justify-center py-4"><LoadingSpinner /></div>
+            ) : availablePayments && availablePayments.length > 0 ? (
               <div className="rounded-md border max-h-60 overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[50px]">
+                        {/* Sửa: Đổi onCheckedChange thành onChange cho Checkbox */}
                         <Checkbox
-                          id="select-all-payments"
-                          checked={payments.length > 0 && selectedPaymentIds.length === payments.length}
-                          onChange={handleSelectAll}
+                          id="select-all-payments-invoice" 
+                          checked={availablePayments.length > 0 && selectedPaymentIds.length === availablePayments.length}
+                          onChange={handleSelectAll} 
                           aria-label="Select all payments"
                         />
                       </TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Method</TableHead>
-                      <TableHead>Amount</TableHead>
+                      <TableHead className="text-right">Amount</TableHead> 
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {payments.map((payment: Payment) => (
-                      <TableRow key={payment.id}>
+                    {availablePayments.map((payment: Payment) => (
+                      <TableRow key={payment.id} className={selectedPaymentIds.includes(payment.id) ? "bg-blue-50 dark:bg-blue-900/30" : ""}>
                         <TableCell>
+                          {/* Sửa: Đổi onCheckedChange thành onChange cho Checkbox */}
                           <Checkbox
-                            id={`select-payment-${payment.id}`}
+                            id={`select-payment-invoice-${payment.id}`} 
                             checked={selectedPaymentIds.includes(payment.id)}
-                            onChange={() => handleCheckboxChange(payment.id)}
-                            aria-labelledby={`payment-label-${payment.id}`}
+                            onChange={() => handleCheckboxChange(payment.id)} 
+                            aria-labelledby={`payment-label-invoice-${payment.id}`}
                           />
                         </TableCell>
-                        <TableCell id={`payment-label-${payment.id}`}>{formatDate(payment.paymentDate)}</TableCell>
+                        <TableCell id={`payment-label-invoice-${payment.id}`}>{formatDate(payment.paymentDate)}</TableCell>
                         <TableCell>{payment.method}</TableCell>
-                        <TableCell>{formatCurrency(payment.amount)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(payment.amount)}</TableCell>
                         <TableCell>{payment.status}</TableCell>
                       </TableRow>
                     ))}
@@ -197,26 +211,29 @@ const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
                 </Table>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">
-                {selectedBookingId ? "No unpaid payments found for this booking." : "Select a booking to see payments."}
+              <p className="text-sm text-gray-500 py-4">
+                {selectedBookingId ? "No unpaid and unbilled payments found for this booking." : "Select a booking to see available payments."}
               </p>
             )}
           </div>
 
-          {/* Notes */}
           <div className="space-y-1">
-            <Label htmlFor="notes">Notes (Optional)</Label>
-            <Input 
-              id="notes" 
+            <Label htmlFor="invoice-notes-area">Notes (Optional)</Label> 
+            <Textarea 
+              id="invoice-notes-area" 
               value={notes} 
               onChange={(e) => setNotes(e.target.value)} 
               placeholder="Add any relevant notes" 
+              className="min-h-[80px]"
             />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={createInvoiceMutation.isPending}>
+          <Button variant="outline" onClick={onClose} disabled={createInvoiceMutation.isPending}>Cancel</Button>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={createInvoiceMutation.isPending || !selectedBookingId || !dueDate }
+          >
             {createInvoiceMutation.isPending ? "Creating..." : "Create Invoice"}
           </Button>
         </DialogFooter>
@@ -226,4 +243,3 @@ const InvoiceCreateModal: React.FC<InvoiceCreateModalProps> = ({
 };
 
 export default InvoiceCreateModal;
-

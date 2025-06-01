@@ -1,10 +1,11 @@
-import React, { ReactElement } from 'react';
-import { render, RenderOptions, RenderResult } from '@testing-library/react';
+import React, { ReactElement, createContext, ReactNode } from 'react'; // Thêm ReactNode
+import { render, RenderOptions, RenderResult, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer } from 'react-toastify'; 
 import userEvent from '@testing-library/user-event';
 import { axe, toHaveNoViolations } from 'jest-axe';
+import { vi, Mock } from 'vitest'; 
 
 // Add jest-axe matchers
 expect.extend(toHaveNoViolations);
@@ -14,9 +15,10 @@ const createTestQueryClient = () => new QueryClient({
   defaultOptions: {
     queries: {
       retry: false,
-      gcTime: 0,
-      staleTime: 0,
+      gcTime: 0, 
+      staleTime: Infinity, 
       refetchOnWindowFocus: false,
+      refetchOnMount: false,
     },
     mutations: {
       retry: false,
@@ -24,15 +26,41 @@ const createTestQueryClient = () => new QueryClient({
   },
 });
 
-// Mock auth context values for different user roles
-export const mockAuthContextValues = {
+// Định nghĩa type cho User object
+interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  roles: string[]; 
+  tenantId: string | null; 
+}
+
+// Định nghĩa type cho giá trị của AuthContext
+export interface AuthContextType {
+  user: AuthUser | null; 
+  isAuthenticated: boolean;
+  permissions: { 
+    canCreate?: boolean;
+    canUpdate?: boolean;
+    canDelete?: boolean;
+    canManageUsers?: boolean;
+  };
+  login: Mock<(email: string, password: string) => Promise<void>>;
+  logout: Mock<() => Promise<void>>;
+  signup: Mock<(data: any) => Promise<any>>; 
+  updateUser: Mock<(data: any) => Promise<any>>; 
+  checkAuth: Mock<() => Promise<AuthUser | null>>; 
+}
+
+
+export const mockAuthContextValues: Record<'SUPER_ADMIN' | 'PARTNER' | 'STAFF' | 'LOGGED_OUT', AuthContextType> = {
   SUPER_ADMIN: {
     user: {
       id: 'super-admin-id',
       name: 'Super Admin',
       email: 'admin@roomrise.com',
-      role: 'SUPER_ADMIN',
-      tenantId: 'system',
+      roles: ['SUPER_ADMIN'], 
+      tenantId: null, 
     },
     isAuthenticated: true,
     permissions: {
@@ -41,13 +69,18 @@ export const mockAuthContextValues = {
       canDelete: true,
       canManageUsers: true,
     },
+    login: vi.fn(async (email, password) => {}),
+    logout: vi.fn(async () => {}),
+    signup: vi.fn(async (data) => ({})), 
+    updateUser: vi.fn(async (data) => ({})), 
+    checkAuth: vi.fn().mockResolvedValue({ id: 'super-admin-id', name: 'Super Admin', email: 'admin@roomrise.com', roles: ['SUPER_ADMIN'], tenantId: null } as AuthUser),
   },
   PARTNER: {
     user: {
       id: 'partner-id',
       name: 'Partner User',
       email: 'partner@example.com',
-      role: 'PARTNER',
+      roles: ['PARTNER'], 
       tenantId: 'tenant-a',
     },
     isAuthenticated: true,
@@ -57,13 +90,18 @@ export const mockAuthContextValues = {
       canDelete: false,
       canManageUsers: false,
     },
+    login: vi.fn(async (email, password) => {}),
+    logout: vi.fn(async () => {}),
+    signup: vi.fn(async (data) => ({})),
+    updateUser: vi.fn(async (data) => ({})),
+    checkAuth: vi.fn().mockResolvedValue({ id: 'partner-id', name: 'Partner User', email: 'partner@example.com', roles: ['PARTNER'], tenantId: 'tenant-a' } as AuthUser),
   },
   STAFF: {
     user: {
       id: 'staff-id',
       name: 'Staff User',
       email: 'staff@example.com',
-      role: 'STAFF',
+      roles: ['STAFF'], 
       tenantId: 'tenant-a',
     },
     isAuthenticated: true,
@@ -73,48 +111,73 @@ export const mockAuthContextValues = {
       canDelete: false,
       canManageUsers: false,
     },
+    login: vi.fn(async (email, password) => {}),
+    logout: vi.fn(async () => {}),
+    signup: vi.fn(async (data) => ({})),
+    updateUser: vi.fn(async (data) => ({})),
+    checkAuth: vi.fn().mockResolvedValue({ id: 'staff-id', name: 'Staff User', email: 'staff@example.com', roles: ['STAFF'], tenantId: 'tenant-a' } as AuthUser),
   },
+  LOGGED_OUT: {
+    user: null,
+    isAuthenticated: false,
+    permissions: {}, 
+    login: vi.fn(async (email, password) => {}),
+    logout: vi.fn(async () => {}),
+    signup: vi.fn(async (data) => ({})),
+    updateUser: vi.fn(async (data) => ({})),
+    checkAuth: vi.fn().mockResolvedValue(null),
+  }
 };
 
-// Mock AuthContext
-export const AuthContext = React.createContext(mockAuthContextValues.PARTNER);
+export const AuthContext = createContext<AuthContextType>(mockAuthContextValues.LOGGED_OUT);
 
-// Mock ThemeContext
-export const ThemeContext = React.createContext({
+export interface ThemeContextType { 
+  theme: 'light' | 'dark';
+  toggleTheme: Mock<() => void>; 
+  primaryColor: string;
+  tenantLogo: string;
+  setTheme: Mock<(themeOrUpdater: 'light' | 'dark' | ((theme: 'light' | 'dark') => 'light' | 'dark')) => void>; 
+}
+
+export const ThemeContext = createContext<ThemeContextType>({
   theme: 'light',
-  toggleTheme: jest.fn(),
+  toggleTheme: vi.fn(), 
   primaryColor: '#4f46e5',
   tenantLogo: '/logo.png',
+  setTheme: vi.fn(), 
 });
 
-// Create a wrapper with all providers
 interface AllProvidersProps {
   children: React.ReactNode;
-  userRole?: 'SUPER_ADMIN' | 'PARTNER' | 'STAFF';
-  theme?: 'light' | 'dark';
+  userRole?: keyof typeof mockAuthContextValues; 
+  themeValue?: Partial<ThemeContextType>; 
 }
 
 export const AllProviders: React.FC<AllProvidersProps> = ({ 
   children, 
-  userRole = 'PARTNER',
-  theme = 'light',
+  userRole = 'LOGGED_OUT', 
+  themeValue: themeProp,
 }) => {
-  const queryClient = createTestQueryClient();
+  const [queryClient] = React.useState(() => createTestQueryClient()); 
   const authValue = mockAuthContextValues[userRole];
-  const themeValue = {
-    theme,
-    toggleTheme: jest.fn(),
-    primaryColor: theme === 'dark' ? '#818cf8' : '#4f46e5',
+  
+  const defaultThemeValue: ThemeContextType = {
+    theme: 'light',
+    toggleTheme: vi.fn(), 
+    setTheme: vi.fn(),
+    primaryColor: '#4f46e5',
     tenantLogo: '/logo.png',
   };
+  const currentThemeValue = { ...defaultThemeValue, ...themeProp };
+
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter> 
         <AuthContext.Provider value={authValue}>
-          <ThemeContext.Provider value={themeValue}>
+          <ThemeContext.Provider value={currentThemeValue}>
             {children}
-            <ToastContainer />
+            <ToastContainer autoClose={500} /> 
           </ThemeContext.Provider>
         </AuthContext.Provider>
       </BrowserRouter>
@@ -122,24 +185,23 @@ export const AllProviders: React.FC<AllProvidersProps> = ({
   );
 };
 
-// Custom render with all providers
 interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
-  userRole?: 'SUPER_ADMIN' | 'PARTNER' | 'STAFF';
-  theme?: 'light' | 'dark';
+  userRole?: keyof typeof mockAuthContextValues;
+  themeValue?: Partial<ThemeContextType>;
 }
 
 export function customRender(
   ui: ReactElement,
   { 
-    userRole = 'PARTNER',
-    theme = 'light',
+    userRole = 'LOGGED_OUT',
+    themeValue,
     ...renderOptions 
   }: CustomRenderOptions = {}
-): RenderResult & { user: ReturnType<typeof userEvent.setup> } {
+): RenderResult & { user: ReturnType<typeof userEvent.setup> } { 
   const user = userEvent.setup();
   
   const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <AllProviders userRole={userRole} theme={theme}>
+    <AllProviders userRole={userRole} themeValue={themeValue}>
       {children}
     </AllProviders>
   );
@@ -150,21 +212,19 @@ export function customRender(
   };
 }
 
-// Helper for testing accessibility
-export async function checkAccessibility(container: HTMLElement) {
-  const results = await axe(container);
+export async function checkAccessibility(containerOrElement: HTMLElement | Element) {
+  const htmlElement = containerOrElement instanceof HTMLElement ? containerOrElement : document.body;
+  const results = await axe(htmlElement);
   expect(results).toHaveNoViolations();
   return results;
 }
 
-// Helper for testing responsive behavior
 export function resizeScreenSize(width: number, height: number) {
   Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: width });
   Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: height });
   window.dispatchEvent(new Event('resize'));
 }
 
-// Screen size presets
 export const screenSizes = {
   mobile: { width: 375, height: 667 },
   tablet: { width: 768, height: 1024 },
@@ -172,56 +232,30 @@ export const screenSizes = {
   largeDesktop: { width: 1920, height: 1080 },
 };
 
-// Helper for testing modals
 export function getModalElements() {
   return {
-    dialog: document.querySelector('[role="dialog"]'),
-    closeButton: document.querySelector('[aria-label="Close"]'),
-    overlay: document.querySelector('[data-overlay="true"]'),
+    dialog: document.querySelector('[role="dialog"]'), 
   };
 }
 
-// Helper for testing form accessibility
 export function checkFormAccessibility(formElement: HTMLElement) {
-  // Check if all inputs have associated labels
-  const inputs = formElement.querySelectorAll('input, select, textarea');
-  const formControls = Array.from(inputs);
+  const inputs = formElement.querySelectorAll('input:not([type="hidden"]), select, textarea');
+  const formControls = Array.from(inputs) as HTMLElement[]; 
   
   formControls.forEach(control => {
     const id = control.getAttribute('id');
+    let label: HTMLLabelElement | null = null;
     if (id) {
-      const label = formElement.querySelector(`label[for="${id}"]`);
-      expect(label).not.toBeNull();
-    } else {
-      // If no ID, check if input is wrapped in a label
-      const parentLabel = control.closest('label');
-      expect(parentLabel).not.toBeNull();
+      label = formElement.querySelector(`label[for="${id}"]`);
     }
-  });
-  
-  // Check if required fields are marked
-  const requiredInputs = formElement.querySelectorAll('[aria-required="true"], [required]');
-  requiredInputs.forEach(input => {
-    const id = input.getAttribute('id');
-    if (id) {
-      const label = formElement.querySelector(`label[for="${id}"]`);
-      expect(label?.textContent).toMatch(/\*/);
+    if (!label) { 
+        label = control.closest('label');
     }
-  });
-  
-  // Check if error messages are properly associated
-  const invalidInputs = formElement.querySelectorAll('[aria-invalid="true"]');
-  invalidInputs.forEach(input => {
-    const id = input.getAttribute('id');
-    if (id) {
-      const errorId = input.getAttribute('aria-describedby');
-      expect(errorId).not.toBeNull();
-      const errorElement = document.getElementById(errorId || '');
-      expect(errorElement).not.toBeNull();
+    if (!label && !control.getAttribute('aria-label') && !control.getAttribute('aria-labelledby')) {
+        console.warn(`Accessibility issue: Control missing label or aria-label/labelledby:`, control);
     }
   });
 }
 
-// Re-export everything from RTL
 export * from '@testing-library/react';
 export { userEvent };

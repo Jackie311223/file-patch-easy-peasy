@@ -1,30 +1,52 @@
-import React, { createContext, useContext, useState } from 'react';
-import { Toast, ToastProps } from './Toast';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+// Giả định './Toast.tsx' (PascalCase) export named 'Toast' (component) và 'ToastProps'.
+// Và ToastProps định nghĩa một prop là 'type' để xác định kiểu của Toast,
+// và kiểu đó là 'success' | 'error' | 'warning' | 'info'.
+import { Toast, ToastProps as SingleToastComponentProps } from './Toast'; 
 
-type ToastType = 'success' | 'error' | 'warning' | 'info';
+// Định nghĩa các loại Toast - Bỏ 'default' nếu component Toast không hỗ trợ
+export type ToastType = 'success' | 'error' | 'warning' | 'info'; 
 
-interface ToastOptions {
-  type?: ToastType;
-  duration?: number;
+// Tùy chọn khi gọi hàm addToast
+export interface ToastOptions { 
+  type?: ToastType; // Giờ đây type sẽ không bao gồm 'default'
+  duration?: number; 
+  title?: ReactNode; 
   action?: {
     label: string;
-    onClick: () => void;
+    onClick: () => void; 
   };
 }
 
-interface ToastItem extends ToastProps {
-  id: string;
+// SingleToastComponentProps là props của component Toast hiển thị đơn lẻ.
+// ToastItem là state nội bộ của Provider.
+interface ToastItem extends Omit<SingleToastComponentProps, 
+  'onDismiss' | 
+  'children'  | 
+  'message'   | 
+  'title'     | 
+  'variant'   | // Omit 'variant' nếu SingleToastComponentProps có nó và chúng ta dùng 'type'
+  'type'      | // Omit 'type' nếu SingleToastComponentProps có nó và chúng ta dùng 'type' của ToastItem
+  'action'    |
+  'id'          
+> {
+  id: string; 
+  message: string; 
+  type: ToastType; // Đây là 'type' mà ToastItem quản lý, đã bỏ 'default'
+  duration: number;   
+  title?: ReactNode; 
+  action?: ToastOptions['action'];
 }
 
 interface ToastContextType {
-  toast: (message: string, options?: ToastOptions) => string;
-  dismiss: (id: string) => void;
-  dismissAll: () => void;
+  addToast: (message: string, options?: ToastOptions) => string;
+  dismissToast: (id: string) => void;
+  dismissAllToasts: () => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
-export const useToast = () => {
+export const useToast = (): ToastContextType => { 
   const context = useContext(ToastContext);
   if (context === undefined) {
     throw new Error('useToast must be used within a ToastProvider');
@@ -32,46 +54,68 @@ export const useToast = () => {
   return context;
 };
 
-export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ToastProvider: React.FC<{ children: ReactNode; defaultDuration?: number }> = ({ 
+  children, 
+  defaultDuration = 5000 
+}) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const toast = (message: string, options: ToastOptions = {}) => {
-    const id = Math.random().toString(36).substring(2, 9);
+  const addToast = useCallback((message: string, options: ToastOptions = {}): string => {
+    const id = `toast-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+    
     const newToast: ToastItem = {
       id,
-      message,
-      type: options.type || 'info',
-      duration: options.duration || 5000,
-      action: options.action,
-      onDismiss: () => dismiss(id),
+      title: options.title, 
+      message, 
+      type: options.type || 'info', // Nếu options.type là undefined, sẽ dùng 'info'.
+                                   // Nếu options.type là một giá trị từ ToastType (đã bỏ 'default'), nó sẽ được dùng.
+      duration: options.duration !== undefined ? options.duration : defaultDuration,
+      action: options.action, 
     };
 
-    setToasts(prev => [...prev, newToast]);
-
-    // Auto dismiss after duration
-    if (newToast.duration !== Infinity) {
-      setTimeout(() => {
-        dismiss(id);
-      }, newToast.duration);
-    }
-
+    setToasts(prevToasts => [newToast, ...prevToasts]); 
     return id;
-  };
+  }, [defaultDuration]);
 
-  const dismiss = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
+  }, []);
 
-  const dismissAll = () => {
+  const dismissAllToasts = useCallback(() => {
     setToasts([]);
-  };
+  }, []);
+
+  useEffect(() => {
+    const activeTimers: NodeJS.Timeout[] = [];
+    toasts.forEach(toast => {
+      if (toast.duration !== Infinity && toast.duration > 0) {
+        const timer = setTimeout(() => {
+          dismissToast(toast.id);
+        }, toast.duration);
+        activeTimers.push(timer);
+      }
+    });
+    return () => {
+      activeTimers.forEach(timer => clearTimeout(timer));
+    };
+  }, [toasts, dismissToast]);
+
 
   return (
-    <ToastContext.Provider value={{ toast, dismiss, dismissAll }}>
+    <ToastContext.Provider value={{ addToast, dismissToast, dismissAllToasts }}>
       {children}
-      <div className="fixed bottom-0 right-0 z-toast p-4 space-y-2 max-w-md">
-        {toasts.map(toast => (
-          <Toast key={toast.id} {...toast} />
+      <div 
+        aria-live="assertive" 
+        className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-2 w-full max-w-xs sm:max-w-sm" 
+      >
+        {toasts.map(toastItem => (
+          <Toast
+            key={toastItem.id}
+            message={toastItem.title ? `${String(toastItem.title)} - ${toastItem.message}` : toastItem.message}
+            type={toastItem.type} // Giờ đây toastItem.type sẽ không bao giờ là 'default'
+            action={toastItem.action}
+            onDismiss={() => dismissToast(toastItem.id)}
+          />
         ))}
       </div>
     </ToastContext.Provider>

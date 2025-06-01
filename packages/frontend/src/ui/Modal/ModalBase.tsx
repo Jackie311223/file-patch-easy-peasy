@@ -1,13 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { createPortal } from 'react-dom';
+import { ModalBase, ModalBaseProps } from '../ModalBase';
 
-interface ModalBaseProps {
+export interface ModalBaseProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
-  children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  children?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg'; // Nếu có
   closeOnClickOutside?: boolean;
   closeOnEsc?: boolean;
   showCloseButton?: boolean;

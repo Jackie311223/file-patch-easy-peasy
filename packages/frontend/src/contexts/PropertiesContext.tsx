@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import apiClient from '@/api/axios';
 import { Property, PropertyData } from '../types/property';
 import { mockProperties } from '../mock/mockData';
@@ -30,7 +29,7 @@ const isDemoEnvironment = (): boolean => {
 const DEMO_MODE = isDemoEnvironment();
 
 // Provider component
-export const PropertiesProvider = ({ children }: { children: ReactNode }) => {
+export const PropertiesProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Initialize state directly based on DEMO_MODE
   const [properties, setProperties] = useState<Property[]>(DEMO_MODE ? mockProperties : []);
   const [loading, setLoading] = useState<boolean>(!DEMO_MODE); // Start loading only if not in demo mode
@@ -193,7 +192,7 @@ export const PropertiesProvider = ({ children }: { children: ReactNode }) => {
   }, [isDemoMode, properties.length]);
 
   // Memoize the context value
-  const contextValue = useMemo(() => ({
+  const contextValue = {
     properties,
     loading,
     error,
@@ -203,10 +202,7 @@ export const PropertiesProvider = ({ children }: { children: ReactNode }) => {
     updateProperty,
     deleteProperty,
     isDemoMode
-  }), [
-    properties, loading, error, getProperties, getProperty,
-    createProperty, updateProperty, deleteProperty, isDemoMode
-  ]);
+  };
 
   return (
     <PropertiesContext.Provider value={contextValue}>
@@ -216,7 +212,7 @@ export const PropertiesProvider = ({ children }: { children: ReactNode }) => {
 };
 
 // Custom hook to use the properties context
-export const useProperties = () => {
+export const useProperties = (): PropertiesContextType => {
   const context = useContext(PropertiesContext);
   if (context === undefined) {
     throw new Error('useProperties must be used within a PropertiesProvider');

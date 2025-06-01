@@ -1,7 +1,7 @@
 // Mock implementation for useToast hook
 // In a real application, this would likely integrate with a ToastProvider context
 
-interface ToastProps {
+export interface ToastProps {
   title?: string;
   description?: string;
   variant?: 'default' | 'destructive' | 'success'; // Add other variants as needed

@@ -1,6 +1,4 @@
-// src/api/propertiesApi.ts
-
-import apiClient from "@/api/axios";
+import apiClient from "./axios";
 import { useQuery, UseQueryResult, QueryKey } from "@tanstack/react-query";
 
 // Định nghĩa kiểu Property
@@ -23,7 +21,6 @@ export const useGetProperties = (): UseQueryResult<Property[], Error> => {
     queryKey: ["properties"] as QueryKey,
     queryFn: fetchProperties,
     staleTime: 5 * 60 * 1000, // Cache 5 phút
-    // enabled: true // Có thể điều chỉnh tuỳ điều kiện
   });
 };
 

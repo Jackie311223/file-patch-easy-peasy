@@ -12,13 +12,13 @@ const updateInvoiceStatus = async (id: string, status: string): Promise<any> => 
   console.log(`Updating invoice ${id} status to ${status}`);
   return {}; // Return empty object as placeholder
 };
-import Button from '@/ui/Button';
+import { Button } from '@/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/Table';
-import Badge from '@/ui/Badge';
+import { Badge } from '@/ui/Badge';
 import { ArrowLeft, CheckCircle, Send, XCircle } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/utils/formatters';
-import LoadingSpinner from '@/ui/Loading/Spinner';
+import { LoadingSpinner } from '@/ui/Loading/Spinner';
 import ErrorState from '@/ui/ErrorState';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from "@/hooks/useAuth";

@@ -1,79 +1,121 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { format, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, keepPreviousData, QueryKey, RefetchOptions, QueryObserverResult } from '@tanstack/react-query'; 
+import { format, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
-import { isTouchDevice } from '@/utils/deviceDetection'; // Corrected import path
+import { isTouchDevice } from '@/utils/deviceDetection';
+import { useSearchParams } from 'react-router-dom'; 
 
 // Components
 import CalendarHeader from './components/CalendarHeader';
 import CalendarFilters from './components/CalendarFilters';
-import TimelineGrid from './components/TimelineGrid';
+import TimelineGrid from './components/TimelineGrid'; 
 import BookingModal from './components/BookingModal';
-import LoadingSpinner from '@/ui/Loading/Spinner'; // Corrected import usage
-import ErrorMessage from '@/components/common/ErrorMessage'; // Using stub
+import { LoadingSpinner } from '@/ui/Loading/Spinner'; 
+import ErrorMessage from '@/components/common/ErrorMessage'; 
+import PageHeader from '@/ui/PageHeader'; 
 
 // API
-import { getCalendarData, updateBookingDates, assignRoom } from '@/api/calendarApi'; // Corrected import path
+import { getCalendarData, updateBookingDates, assignRoom, AssignRoomParams } from '@/api/calendarApi'; 
 
 // Styles
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import './CalendarPage.css';
+import './CalendarPage.css'; 
 
-// Setup localizer for react-big-calendar
+// Định nghĩa types
+interface Room {
+  id: string;
+  name: string;
+  roomTypeId: string;
+  roomTypeName: string; 
+  status: string; 
+}
+
+interface Booking {
+  id: string;
+  guestName: string;
+  checkIn: string | Date;
+  checkOut: string | Date;
+  roomId: string;
+  roomName: string; 
+  roomTypeId: string; 
+  roomTypeName: string; 
+  status: string; 
+  nights: number; 
+  source: string; 
+  notes?: string;
+  isVIP?: boolean;
+  totalAmount: number; 
+}
+
+interface CalendarData {
+  rooms: Room[];
+  bookings: Booking[];
+}
+
 const localizer = momentLocalizer(moment);
-
-// Backend for drag and drop based on device
 const dndBackend = isTouchDevice() ? TouchBackend : HTML5Backend;
 
 const CalendarPage = () => {
-  // State
-  const [viewMode, setViewMode] = useState<'week' | 'month'>('week'); // Explicitly type the state
+  const [searchParams, setSearchParams] = useSearchParams(); 
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const [currentDate, setCurrentDate] = useState(new Date()); 
   const [dateRange, setDateRange] = useState({
-    start: startOfWeek(new Date()),
-    end: endOfWeek(new Date()),
-  });  const [filters, setFilters] = useState({
-    propertyId: 
-      "",
-    bookingStatus: [] as string[], // Explicitly type as string[]
-    roomTypeId: 
-      "",
+    start: startOfWeek(currentDate, { weekStartsOn: 1 }), 
+    end: endOfWeek(currentDate, { weekStartsOn: 1 }),
   });
-  const [selectedBooking, setSelectedBooking] = useState<any>(null); // Added type any for now, replace with Booking type later
+  const [filters, setFilters] = useState({
+    propertyId: "",
+    bookingStatus: [] as string[],
+    roomTypeId: "",
+  });
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null); 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Fetch properties for filter dropdown
   const { data: properties, isLoading: propertiesLoading } = useQuery({
-    queryKey: ['properties'], // v5 syntax
-    queryFn: async () => { // v5 syntax
-      // Replace with actual API call
+    queryKey: ['properties'],
+    queryFn: async () => {
+      console.log('Fetching properties (mock)');
       return [
         { id: 'property-1', name: 'Beach Resort' },
         { id: 'property-2', name: 'Mountain Lodge' },
       ];
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Set default property when properties are loaded
   useEffect(() => {
     if (properties && properties.length > 0 && !filters.propertyId) {
       setFilters(prev => ({ ...prev, propertyId: properties[0].id }));
     }
-  }, [properties, filters.propertyId]); // Added filters.propertyId dependency
+  }, [properties, filters.propertyId]);
 
-  // Fetch calendar data
+  useEffect(() => {
+    if (viewMode === 'week') {
+      setDateRange({
+        start: startOfWeek(currentDate, { weekStartsOn: 1 }),
+        end: endOfWeek(currentDate, { weekStartsOn: 1 }),
+      });
+    } else { 
+      setDateRange({
+        start: startOfMonth(currentDate),
+        end: endOfMonth(currentDate),
+      });
+    }
+  }, [currentDate, viewMode]);
+
   const {
     data: calendarData,
     isLoading: calendarLoading,
     isError: calendarError,
+    error, 
     refetch: refetchCalendar,
-  } = useQuery({
-    queryKey: ['calendar', filters.propertyId, dateRange.start, dateRange.end, filters.bookingStatus, filters.roomTypeId], // v5 syntax
-    queryFn: () => getCalendarData({ // v5 syntax
+  } = useQuery<CalendarData, Error, CalendarData, QueryKey>({ 
+    queryKey: ['calendar', filters.propertyId, dateRange.start.toISOString(), dateRange.end.toISOString(), filters.bookingStatus, filters.roomTypeId] as QueryKey, 
+    queryFn: () => getCalendarData({ 
       propertyId: filters.propertyId,
       startDate: format(dateRange.start, 'yyyy-MM-dd'),
       endDate: format(dateRange.end, 'yyyy-MM-dd'),
@@ -81,167 +123,120 @@ const CalendarPage = () => {
       roomTypeId: filters.roomTypeId || undefined,
     }),
     enabled: !!filters.propertyId,
-    staleTime: 1 * 60 * 1000, // 1 minute
+    staleTime: 1 * 60 * 1000,
+    placeholderData: keepPreviousData, 
   });
 
-  // Handle view mode change (week/month)
-  const handleViewModeChange = (mode: 'week' | 'month') => { // Added type
+  const handleViewModeChange = (mode: 'week' | 'month') => {
     setViewMode(mode);
-    if (mode === 'week') {
-      setDateRange({
-        start: startOfWeek(new Date()),
-        end: endOfWeek(new Date()),
-      });
+    setCurrentDate(new Date()); 
+  };
+
+  const handleDateChange = (direction: 'prev' | 'next' | 'today') => {
+    if (direction === 'today') {
+      setCurrentDate(new Date());
     } else {
-      setDateRange({
-        start: startOfMonth(new Date()),
-        end: endOfMonth(new Date()),
-      });
+      const newDate = viewMode === 'week'
+        ? (direction === 'prev' ? subDays(currentDate, 7) : addDays(currentDate, 7))
+        : (direction === 'prev' ? subMonths(currentDate, 1) : addMonths(currentDate, 1));
+      setCurrentDate(newDate);
     }
   };
 
-  // Handle date navigation
-  const handleDateChange = (direction: 'prev' | 'next' | 'today') => { // Added type
-    if (viewMode === 'week') {
-      if (direction === 'prev') {
-        setDateRange(prev => ({
-          start: subDays(prev.start, 7),
-          end: subDays(prev.end, 7),
-        }));
-      } else if (direction === 'next') {
-        setDateRange(prev => ({
-          start: addDays(prev.start, 7),
-          end: addDays(prev.end, 7),
-        }));
-      } else if (direction === 'today') {
-        setDateRange({
-          start: startOfWeek(new Date()),
-          end: endOfWeek(new Date()),
-        });
-      }
-    } else {
-      // Assuming month view logic needs adjustment for 30 days
-      const daysToAdjust = 30; // Or calculate based on current month
-      if (direction === 'prev') {
-        setDateRange(prev => ({
-          start: subDays(startOfMonth(prev.start), daysToAdjust), // Adjust logic if needed
-          end: endOfMonth(subDays(startOfMonth(prev.start), daysToAdjust)),
-        }));
-      } else if (direction === 'next') {
-        setDateRange(prev => ({
-          start: addDays(startOfMonth(prev.start), daysToAdjust), // Adjust logic if needed
-          end: endOfMonth(addDays(startOfMonth(prev.start), daysToAdjust)),
-        }));
-      } else if (direction === 'today') {
-        setDateRange({
-          start: startOfMonth(new Date()),
-          end: endOfMonth(new Date()),
-        });
-      }
-    }
+  const handleFilterChange = (newFilters: Partial<Omit<typeof filters, 'bookingStatus'> & { bookingStatus?: string | string[] }>) => { 
+    setFilters(prev => ({ 
+      ...prev, 
+      ...newFilters,
+      bookingStatus: typeof newFilters.bookingStatus === 'string' && newFilters.bookingStatus !== "" 
+                       ? [newFilters.bookingStatus] 
+                       : (Array.isArray(newFilters.bookingStatus) ? newFilters.bookingStatus : []),
+      page: 1 
+    })); 
   };
 
-  // Handle filter changes
-  const handleFilterChange = (newFilters: Partial<typeof filters>) => { // Added type
-    setFilters(prev => ({ ...prev, ...newFilters }));
-  };
-
-  // Handle booking click
-  const handleBookingClick = (booking: any) => { // Added type
+  const handleBookingClick = (booking: Booking) => { 
     setSelectedBooking(booking);
     setIsModalOpen(true);
   };
 
-  // Handle booking drag
-  const handleBookingDrag = async (bookingId: string, newDates: { start: Date; end: Date }) => { // Added types
+  const handleBookingDrag = async (bookingId: string, newDates: { start: Date; end: Date }, newRoomId?: string) => { 
     try {
-      await updateBookingDates(bookingId, {
-        checkIn: format(newDates.start, 'yyyy-MM-dd'),
-        checkOut: format(newDates.end, 'yyyy-MM-dd'),
-      });
+      if (newRoomId) { 
+        const params: AssignRoomParams = { bookingId, roomId: newRoomId };
+        await assignRoom(params);
+      } else { 
+        await updateBookingDates(bookingId, {
+          checkIn: format(newDates.start, 'yyyy-MM-dd'),
+          checkOut: format(newDates.end, 'yyyy-MM-dd'),
+        });
+      }
       refetchCalendar();
-    } catch (error) {
-      console.error('Error updating booking dates:', error);
-      // Show error notification
+    } catch (err) { 
+      console.error('Error updating booking from drag:', err);
     }
   };
 
-  // Handle room change
-  const handleRoomChange = async (bookingId: string, roomId: string) => { // Added types
-    try {
-      await assignRoom({
-        bookingId,
-        roomId,
-      });
-      refetchCalendar();
-    } catch (error) {
-      console.error('Error assigning room:', error);
-      // Show error notification
-    }
-  };
-
-  // Handle modal close
   const handleModalClose = () => {
     setIsModalOpen(false);
     setSelectedBooking(null);
   };
 
-  // Handle booking update from modal
-  const handleBookingUpdate = async (updatedBooking: any) => { // Added type
+  const handleBookingUpdate = async (updatedBooking: Partial<Booking> & { id: string }) => { 
     try {
-      // Call API to update booking
-      // ...
+      console.log('Updating booking from modal (mock):', updatedBooking);
       refetchCalendar();
       handleModalClose();
-    } catch (error) {
-      console.error('Error updating booking:', error);
-      // Show error notification
+    } catch (err) {
+      console.error('Error updating booking from modal:', err);
     }
   };
 
-  // Loading state
-  if (propertiesLoading) {
-    return <LoadingSpinner />;
+  if (propertiesLoading) { 
+    return <div className="flex justify-center items-center h-screen"><LoadingSpinner /></div>;
   }
-
-  // Error state
-  if (calendarError) {
-    return <ErrorMessage message="Failed to load calendar data. Please try again." />;
+  
+  if (calendarError && !calendarLoading) { 
+    const specificError = error as Error; 
+    return <div className="p-4 md:p-6"><ErrorMessage message={specificError?.message || "Failed to load calendar data. Please try again."} 
+    /></div>;
   }
 
   return (
-    <div className="calendar-page">
+    <div className="calendar-page p-4 md:p-6">
+      <PageHeader title="Calendar View" /> 
+      
       <CalendarHeader
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
-        dateRange={dateRange}
+        dateRange={dateRange} 
         onDateChange={handleDateChange}
       />
       
       <CalendarFilters
         properties={properties || []}
         selectedProperty={filters.propertyId}
-        selectedStatus={filters.bookingStatus}
+        selectedStatus={filters.bookingStatus} 
         selectedRoomType={filters.roomTypeId}
         onFilterChange={handleFilterChange}
       />
       
       <DndProvider backend={dndBackend}>
         <TimelineGrid
-          isLoading={calendarLoading}
-          viewMode={viewMode as 'week' | 'month'} // Explicitly cast to the expected union type
+          isLoading={calendarLoading} 
+          viewMode={viewMode}
           dateRange={dateRange}
-          rooms={calendarData?.rooms || []}
-          bookings={calendarData?.bookings || []}
+          rooms={calendarData?.rooms || []} 
+          bookings={calendarData?.bookings || []} 
           onBookingClick={handleBookingClick}
-          onBookingDrag={handleBookingDrag}
-          onRoomChange={handleRoomChange}
+          // Sửa: Sử dụng đúng tên prop là onBookingDragProp và onRoomChangeProp
+          onBookingDragProp={handleBookingDrag}
+          onRoomChangeProp={(bookingId, newRoomId, newDates) => handleBookingDrag(bookingId, newDates, newRoomId)} 
         />
       </DndProvider>
       
       {isModalOpen && selectedBooking && (
         <BookingModal
-          booking={selectedBooking}
+          booking={selectedBooking} 
           isOpen={isModalOpen}
           onClose={handleModalClose}
           onUpdate={handleBookingUpdate}
@@ -252,4 +247,3 @@ const CalendarPage = () => {
 };
 
 export default CalendarPage;
-

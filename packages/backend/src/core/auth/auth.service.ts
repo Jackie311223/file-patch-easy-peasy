@@ -1,17 +1,11 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
-import { User } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-    private configService: ConfigService
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   /**
    * Validates user credentials.
@@ -19,7 +13,7 @@ export class AuthService {
    * @param pass Plain text password
    * @returns User object without password if valid, otherwise null
    */
-  async validateUser(email: string, pass: string): Promise<Omit<User, 'password'> | null> {
+  async validateUser(email: string, pass: string) {
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
@@ -27,7 +21,6 @@ export class AuthService {
     if (user && user.password) {
       const isPasswordMatching = await bcrypt.compare(pass, user.password);
       if (isPasswordMatching) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, ...result } = user; // Exclude password from the returned object
         return result;
       }
@@ -40,16 +33,13 @@ export class AuthService {
    * @param user User object (result from validateUser)
    * @returns Object containing the access token
    */
-  async login(user: Omit<User, 'password'>) {
-    // Ensure payload contains necessary fields for authorization
-    const payload = {
-      email: user.email,
-      sub: user.id,
-      role: user.role,
-      tenantId: user.tenantId, // Include tenantId if available
-    };
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
+  async login(loginDto: LoginDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: loginDto.email },
+    });
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+    const isPasswordMatching = await bcrypt.compare(loginDto.password, user.password);
+    if (!isPasswordMatching) throw new UnauthorizedException('Invalid credentials');
+    return user;
   }
 }

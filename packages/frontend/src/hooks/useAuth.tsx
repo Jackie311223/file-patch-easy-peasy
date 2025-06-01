@@ -1,99 +1,112 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
-import apiClient from '@/api/axios';
-
-interface User {
-  id: string;
-  role: string;
-  tenantId: string;
-  email?: string;
-  name?: string;
-}
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { toast } from 'sonner';
+import apiClient from "@/api/axios";
 
 interface AuthContextType {
-  user: User | null;
+  user: any;
   token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (email: string, password: string) => Promise<any>; // Return type changed to any for simplicity
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  isAuthenticated: boolean;
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  token: null,
-  isAuthenticated: false,
-  isLoading: true,
-  login: async () => { throw new Error('Login function not implemented'); },
-  logout: () => {},
-});
+const AuthContext = createContext<AuthContextType | null>(null);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  // Kiểm tra token lưu trong localStorage khi khởi động
   useEffect(() => {
-    // Check if user is already logged in
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (storedToken && storedUser) {
-      try {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error("Failed to parse stored user data:", error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+    const checkAuth = () => {
+      const storedToken = localStorage.getItem("token");
+      const storedUser = localStorage.getItem("user");
+      
+      console.log("Auth check on startup - Token exists:", !!storedToken);
+
+      if (storedToken && storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          setToken(storedToken);
+          setUser(parsedUser);
+          setIsAuthenticated(true);
+          console.log("User restored from localStorage:", parsedUser);
+        } catch (err) {
+          // Xóa localStorage nếu JSON không hợp lệ
+          console.error("Error parsing stored user:", err);
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setIsAuthenticated(false);
+        }
+      } else {
+        setIsAuthenticated(false);
       }
-    }
-    
-    setIsLoading(false);
+      
+      setLoading(false);
+    };
+
+    checkAuth();
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      setIsLoading(true);
-      const response = await apiClient.post('/auth/login', { email, password });
-      const { access_token, user } = response.data;
+      setLoading(true);
+      console.log("Attempting login with:", { email, password });
       
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(user));
+      const response = await apiClient.post("/auth/login", { email, password });
+      const { user, token } = response.data;
       
-      setToken(access_token);
+      console.log("Login successful:", { user, token });
+      
+      // Lưu thông tin đăng nhập vào localStorage
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+      
+      // Cập nhật state
       setUser(user);
+      setToken(token);
+      setIsAuthenticated(true);
       
-      return response.data; // Return the response data
-    } catch (error) {
-      console.error('Login failed:', error);
-      // Clear potentially invalid token/user data on login failure
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setToken(null);
-      setUser(null);
-      throw error;
+      // Hiển thị thông báo thành công
+      toast.success("Đăng nhập thành công!");
+      
+    } catch (error: any) {
+      console.error("Login error:", error);
+      const errorMessage = error.response?.data?.message || "Đăng nhập thất bại";
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setToken(null);
+    // Xóa dữ liệu đăng nhập khỏi localStorage
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    
+    // Reset state
     setUser(null);
-    // Optionally redirect to login page
-    // window.location.href = '/login';
+    setToken(null);
+    setIsAuthenticated(false);
+    
+    // Hiển thị thông báo
+    toast.info("Đã đăng xuất");
+    
+    // Chuyển hướng về trang login (tùy chọn, có thể xử lý ở component)
+    window.location.href = "/#/login";
   };
 
-  // Carefully rewritten return block
-  const authContextValue = {
+  const authContextValue: AuthContextType = {
     user,
     token,
-    isAuthenticated: !!user,
-    isLoading,
+    loading,
     login,
     logout,
+    isAuthenticated
   };
 
   return (
@@ -101,10 +114,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       {children}
     </AuthContext.Provider>
   );
+}
+
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 };
-
-export const useAuth = () => useContext(AuthContext);
-
-// Keep default export if other parts of the codebase rely on it
-// but prefer named export for clarity
-export default useAuth;

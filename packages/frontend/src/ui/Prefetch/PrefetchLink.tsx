@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, LinkProps } from 'react-router-dom';
 
 // Renamed 'prefetch' prop to 'enablePrefetch' to avoid conflict with LinkProps
-interface PrefetchLinkProps extends Omit<LinkProps, 'prefetch'> { // Omit the conflicting prop
+interface PrefetchLinkProps extends Omit<LinkProps, 'prefetch'> {
   enablePrefetch?: boolean;
   prefetchTimeout?: number;
   onPrefetch?: () => Promise<any>;
@@ -10,7 +10,7 @@ interface PrefetchLinkProps extends Omit<LinkProps, 'prefetch'> { // Omit the co
 
 export const PrefetchLink: React.FC<PrefetchLinkProps> = ({
   children,
-  enablePrefetch = true, // Use the renamed prop
+  enablePrefetch = true,
   prefetchTimeout = 300,
   onPrefetch,
   ...props
@@ -31,7 +31,6 @@ export const PrefetchLink: React.FC<PrefetchLinkProps> = ({
   };
 
   const handleMouseEnter = () => {
-    // Use the renamed prop
     if (enablePrefetch && !isPrefetched && onPrefetch) {
       timeoutRef.current = setTimeout(() => {
         prefetchData();
@@ -48,7 +47,6 @@ export const PrefetchLink: React.FC<PrefetchLinkProps> = ({
 
   // Use IntersectionObserver to prefetch when link becomes visible
   useEffect(() => {
-    // Use the renamed prop
     if (!enablePrefetch || isPrefetched || !onPrefetch || !linkRef.current) return;
 
     const observer = new IntersectionObserver(
@@ -68,7 +66,6 @@ export const PrefetchLink: React.FC<PrefetchLinkProps> = ({
     return () => {
       observer.disconnect();
     };
-    // Use the renamed prop in dependency array
   }, [enablePrefetch, isPrefetched, onPrefetch]);
 
   return (

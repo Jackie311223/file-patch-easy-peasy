@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { API_BASE_URL } from '@/config';
+import apiClient from './axios';
 
 // Types
 export interface Message {
@@ -32,16 +31,16 @@ export const getMessages = async (params?: {
   limit?: number;
   offset?: number;
 }): Promise<MessagesResponse> => {
-  const response = await axios.get(`${API_BASE_URL}/messages`, { params });
+  const response = await apiClient.get<MessagesResponse>('/messages', { params });
   return response.data;
 };
 
 export const markMessageAsRead = async (id: string): Promise<Message> => {
-  const response = await axios.patch(`${API_BASE_URL}/messages/${id}/read`);
+  const response = await apiClient.patch<Message>(`/messages/${id}/read`);
   return response.data;
 };
 
 export const sendMessage = async (data: CreateMessageRequest): Promise<Message> => {
-  const response = await axios.post(`${API_BASE_URL}/messages`, data);
+  const response = await apiClient.post<Message>('/messages', data);
   return response.data;
 };

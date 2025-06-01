@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react'; // Replaced Heroicons with Lucide
+import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 export interface ToastProps {
   message: string;
@@ -52,9 +52,8 @@ export const Toast: React.FC<ToastProps> = ({ message, type, action, onDismiss }
         className="ml-4 flex-shrink-0 text-gray-400 hover:text-gray-500"
         onClick={onDismiss}
       >
-        <X className="h-5 w-5" /> {/* Use Lucide X icon */}
+        <X className="h-5 w-5" />
       </button>
     </div>
   );
 };
-

@@ -4,7 +4,7 @@ import classNames from 'classnames';
 // Basic Label component, similar to what might be found in Shadcn/ui
 interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {}
 
-const Label = React.forwardRef<HTMLLabelElement, LabelProps>(({ className, ...props }, ref) => (
+export const Label = React.forwardRef<HTMLLabelElement, LabelProps>(({ className, ...props }, ref) => (
   <label
     ref={ref}
     className={classNames(
@@ -15,6 +15,3 @@ const Label = React.forwardRef<HTMLLabelElement, LabelProps>(({ className, ...pr
   />
 ));
 Label.displayName = 'Label';
-
-export default Label;
-

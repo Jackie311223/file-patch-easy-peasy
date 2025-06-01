@@ -2,58 +2,22 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine # Use a specific PostgreSQL version
-    container_name: pms_postgres_db
+    image: postgres:14
     environment:
-      POSTGRES_USER: pmsuser
-      POSTGRES_PASSWORD: pmspassword
-      POSTGRES_DB: pmsdb
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: roomrise
     ports:
-      - "5432:5432" # Expose DB port only if needed for external access, otherwise remove
-    networks:
-      - pms_network
-    restart: unless-stopped
+      - "5432:5432"
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: pms_backend_app
+      context: ./packages/backend
+      dockerfile: ../../Dockerfile.backend
+    env_file:
+      - ./packages/backend/.env
+    ports:
+      - "3001:3001"
     depends_on:
       - db
-    environment:
-      DATABASE_URL: postgresql://pmsuser:pmspassword@db:5432/pmsdb
-      JWT_SECRET: roomrise-secret # As requested by user
-      PORT: 3000 # Ensure this matches the port used in the backend app
-      # Add any other necessary backend environment variables here
-    ports:
-      - "3000:3000"
-    networks:
-      - pms_network
-    restart: unless-stopped
-    # Optional: Add command to run migrations before starting
-    # command: ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: pms_frontend_app
-    ports:
-      - "8080:80" # Map Nginx port 80 to host port 8080
-    depends_on:
-      - backend # Ensures backend starts first, though not strictly required for static files
-    networks:
-      - pms_network
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-    driver: local
-
-networks:
-  pms_network:
-    driver: bridge
 

@@ -1,18 +1,17 @@
-import React from 'react';
-import Dialog from '@/ui/Dialog';
-import { DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
-import Button from '@/ui/Button';
-import Input from '@/ui/Input';
-import Label from '@/ui/Label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/Select';
-import Textarea from '@/ui/Textarea';
+import React, { useEffect } from 'react'; 
+import Dialog, { DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog'; 
+import { Button } from '@/ui/Button';
+// import { Input } from '@/ui/Input'; // Bỏ nếu không dùng
+import { Label } from '@/ui/Label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/Select'; 
+import { Textarea } from '@/ui/Textarea'; 
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { useGetUsers } from '@/api/usersApi';
-import { sendMessage } from '@/api/messagesApi';
-import { useToast } from '@/hooks/useToast';
+import { useMutation, useQueryClient } from '@tanstack/react-query'; 
+import { useGetUsers, User } from '@/api/usersApi'; 
+import { sendMessage } from '@/api/messagesApi'; 
+import { useToast } from '@/hooks/useToast'; 
 
 interface SendMessageModalProps {
   isOpen: boolean;
@@ -20,18 +19,28 @@ interface SendMessageModalProps {
   onSuccess: () => void;
 }
 
-// Define form schema
+// Giả sử API sendMessage mong đợi payload như thế này
+interface SendMessagePayload {
+    messageType: 'SYSTEM' | 'PRIVATE';
+    recipientId?: string; 
+    content: string;
+    // senderId?: string; // Có thể thêm nếu API cần
+}
+
 const formSchema = z.object({
   messageType: z.enum(['SYSTEM', 'PRIVATE']),
-  recipientId: z.string().optional()
-    .refine(val => val !== undefined && val !== '', {
-      message: 'Recipient is required for private messages',
+  recipientId: z.string().optional(), 
+  content: z.string().min(1, { message: 'Message content cannot be empty.' }),
+}).superRefine((data, ctx) => { 
+  if (data.messageType === 'PRIVATE' && (!data.recipientId || data.recipientId.trim() === '')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Recipient is required for private messages.',
       path: ['recipientId'],
-    }),
-  content: z.string().min(1, 'Message content is required'),
+    });
+  }
 });
 
-// Type for form values
 type FormValues = z.infer<typeof formSchema>;
 
 const SendMessageModal: React.FC<SendMessageModalProps> = ({
@@ -40,8 +49,8 @@ const SendMessageModal: React.FC<SendMessageModalProps> = ({
   onSuccess,
 }) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient(); 
   
-  // Initialize form with react-hook-form and zod validation
   const { 
     control, 
     handleSubmit, 
@@ -55,65 +64,69 @@ const SendMessageModal: React.FC<SendMessageModalProps> = ({
       recipientId: '',
       content: '',
     },
-    mode: 'onChange',
+    mode: 'onChange', 
   });
   
-  // Watch messageType to conditionally show recipient field
   const messageType = watch('messageType');
   
-  // Fetch users for recipient dropdown (only needed for PRIVATE messages)
-  const { data: usersResponse, isLoading: isLoadingUsers } = useGetUsers({ limit: 100 }); // Correct hook usage
-  const users = usersResponse || []; // Safe access: usersResponse is User[] | undefined
-  
-  // Send message mutation
-  const sendMessageMutation = useMutation({
-    mutationFn: (data: FormValues) => sendMessage(data),
+  // Sửa: Giả sử useGetUsers().data trả về trực tiếp User[] (hoặc User[] | undefined)
+  // Lỗi "Property 'data' does not exist on type 'User[]'" có nghĩa là `usersQuery.data` đã là User[]
+  const { data: users, isLoading: isLoadingUsers } = useGetUsers({ limit: 100 }); 
+  // const usersToMap: User[] = users || []; // Sử dụng users trực tiếp, fallback về mảng rỗng nếu undefined
+
+  const sendMessageMutation = useMutation<any, Error, SendMessagePayload>({ 
+    mutationFn: (payload) => sendMessage(payload), 
     onSuccess: () => {
       toast({
-        title: 'Message sent',
-        description: 'Your message has been sent successfully',
-        variant: 'success',
+        title: 'Message Sent',
+        description: 'Your message has been sent successfully.',
+        variant: 'success', 
       });
-      reset();
-      onSuccess();
+      reset(); 
+      onSuccess(); 
+      onClose(); 
+      queryClient.invalidateQueries({ queryKey: ['messages'] }); 
     },
     onError: (error: any) => {
       toast({
-        title: 'Error sending message',
-        description: error.message || 'Something went wrong',
-        variant: 'destructive',
+        title: 'Error Sending Message',
+        description: error.message || 'Something went wrong. Please try again.',
+        variant: 'destructive', 
       });
     }
   });
   
-  // Form submission handler
   const onSubmit = (data: FormValues) => {
-    // For SYSTEM messages, remove recipientId
-    if (data.messageType === 'SYSTEM') {
-      data.recipientId = undefined;
+    const payload: SendMessagePayload = {
+        messageType: data.messageType,
+        content: data.content,
+    };
+    if (data.messageType === 'PRIVATE') {
+      payload.recipientId = data.recipientId;
     }
-    
-    sendMessageMutation.mutate(data);
+    sendMessageMutation.mutate(payload);
   };
   
-  // Reset form when modal closes
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isOpen) {
-      reset();
+      reset({ 
+        messageType: 'SYSTEM',
+        recipientId: '',
+        content: '',
+      });
     }
   }, [isOpen, reset]);
   
   return (
-    <Dialog isOpen={isOpen} onClose={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog open={isOpen} onOpenChange={(openValue) => { if (!openValue) onClose(); }}> 
+      <DialogContent className="sm:max-w-[500px] dark:bg-gray-800">
         <DialogHeader>
-          <DialogTitle>Send Message</DialogTitle>
+          <DialogTitle className="dark:text-white">Send New Message</DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
-          {/* Message Type */}
           <div className="space-y-2">
-            <Label htmlFor="messageType">Message Type</Label>
+            <Label htmlFor="sendMessageType" className="dark:text-gray-300">Message Type</Label>
             <Controller
               name="messageType"
               control={control}
@@ -122,78 +135,88 @@ const SendMessageModal: React.FC<SendMessageModalProps> = ({
                   value={field.value}
                   onValueChange={field.onChange}
                 >
-                  <SelectTrigger id="messageType">
+                  <SelectTrigger id="sendMessageType" className="dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                     <SelectValue placeholder="Select message type" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SYSTEM">System Message (All Users)</SelectItem>
-                    <SelectItem value="PRIVATE">Private Message</SelectItem>
+                  <SelectContent className="dark:bg-gray-700 dark:text-white">
+                    <SelectItem value="SYSTEM" className="dark:hover:bg-gray-600">System Message (All Users)</SelectItem>
+                    <SelectItem value="PRIVATE" className="dark:hover:bg-gray-600">Private Message</SelectItem>
                   </SelectContent>
                 </Select>
               )}
             />
             {errors.messageType && (
-              <p className="text-sm text-red-500">{errors.messageType.message}</p>
+              <p className="text-sm text-red-500 dark:text-red-400">{errors.messageType.message}</p>
             )}
           </div>
           
-          {/* Recipient (only for PRIVATE messages) */}
           {messageType === 'PRIVATE' && (
             <div className="space-y-2">
-              <Label htmlFor="recipientId">Recipient</Label>
+              <Label htmlFor="sendRecipientId" className="dark:text-gray-300">Recipient</Label>
               <Controller
                 name="recipientId"
                 control={control}
                 render={({ field }) => (
                   <Select
-                    value={field.value}
+                    value={field.value || ''} 
                     onValueChange={field.onChange}
                   >
-                    <SelectTrigger id="recipientId" className={errors.recipientId ? 'border-red-500' : ''}>
+                    <SelectTrigger 
+                        id="sendRecipientId" 
+                        className={`${errors.recipientId ? 'border-red-500' : 'dark:border-gray-600'} dark:bg-gray-700 dark:text-white`}
+                        disabled={isLoadingUsers} 
+                    >
                       <SelectValue placeholder="Select recipient" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {users.map((user: any) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name} ({user.email})
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="dark:bg-gray-700 dark:text-white">
+                      {isLoadingUsers ? (
+                        <SelectItem value="loading" disabled className="dark:hover:bg-gray-600">Loading users...</SelectItem>
+                      ) : (
+                        // Sửa: map trực tiếp trên 'users' (là User[] | undefined) nếu useGetUsers().data trả về User[]
+                        (users || []).map((userItem: User) => ( 
+                          <SelectItem key={userItem.id} value={userItem.id} className="dark:hover:bg-gray-600">
+                            {userItem.name || userItem.email} {/* Hiển thị email nếu không có name */}
+                          </SelectItem>
+                        ))
+                      )}
+                       {(users || []).length === 0 && !isLoadingUsers && (
+                         <SelectItem value="no-users" disabled className="dark:hover:bg-gray-600">No users found</SelectItem>
+                       )}
                     </SelectContent>
                   </Select>
                 )}
               />
               {errors.recipientId && (
-                <p className="text-sm text-red-500">{errors.recipientId.message}</p>
+                <p className="text-sm text-red-500 dark:text-red-400">{errors.recipientId.message}</p>
               )}
             </div>
           )}
           
-          {/* Message Content */}
           <div className="space-y-2">
-            <Label htmlFor="content">Message</Label>
+            <Label htmlFor="sendMessageContent" className="dark:text-gray-300">Message</Label>
             <Controller
               name="content"
               control={control}
               render={({ field }) => (
                 <Textarea
-                  id="content"
+                  id="sendMessageContent"
                   placeholder="Enter your message here..."
-                  className={`min-h-[120px] resize-none ${errors.content ? 'border-red-500' : ''}`}
+                  className={`min-h-[120px] resize-none ${errors.content ? 'border-red-500' : 'dark:bg-gray-700 dark:border-gray-600 dark:text-white'}`}
                   {...field}
                 />
               )}
             />
             {errors.content && (
-              <p className="text-sm text-red-500">{errors.content.message}</p>
+              <p className="text-sm text-red-500 dark:text-red-400">{errors.content.message}</p>
             )}
           </div>
           
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={onClose}>
+          <DialogFooter className="dark:border-gray-700">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={sendMessageMutation.isPending}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Sending...' : 'Send Message'}
+            <Button type="submit" disabled={isSubmitting || sendMessageMutation.isPending}>
+              {isSubmitting || sendMessageMutation.isPending ? 'Sending...' : 'Send Message'}
             </Button>
           </DialogFooter>
         </form>

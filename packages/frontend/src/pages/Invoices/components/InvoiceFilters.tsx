@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import Button from "@/ui/Button";
+import { Button } from "@/ui/Button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/Select";
 import DatePicker from "@/ui/DatePicker";
 import { useGetProperties } from "@/api/propertiesApi"; // Corrected: Use the hook

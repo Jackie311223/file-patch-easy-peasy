@@ -3,6 +3,6 @@ import { Injectable } from '@nestjs/common';
 @Injectable()
 export class AppService {
   getHello(): string {
-    return 'Welcome to Roomrise PMS API';
+    return 'Hello from PMS-ROOMRISE backend!';
   }
 }

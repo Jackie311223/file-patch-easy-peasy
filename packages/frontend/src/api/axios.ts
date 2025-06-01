@@ -1,42 +1,35 @@
-// src/api/axios.ts
+import axios, { AxiosError } from 'axios';
 
-import axios from 'axios';
-
-// Create a custom axios instance with default configuration
+// Sử dụng cổng 3001 cho Express hoặc 3002 cho NestJS tùy theo backend đang chạy
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
+  baseURL: 'http://localhost:3001', // Hoặc 3002 nếu bạn đang chạy NestJS
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false
 });
 
-// Add request interceptor to include auth token
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Interceptor để log các request
+apiClient.interceptors.request.use(config => {
+  console.log('API Request:', config.method?.toUpperCase(), config.url);
+  return config;
+});
 
-// Add response interceptor for error handling
+// Interceptor để log responses
 apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Handle 401 Unauthorized errors
+  response => {
+    console.log('API Response:', response.status, response.config.url);
+    return response;
+  },
+  (error: AxiosError) => {
+    console.error('API Error:', error.response?.status, error.config?.url, error.message);
     if (error.response && error.response.status === 401) {
-      // Clear local storage and redirect to login
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/login';  // Sửa lại thành route của frontend
     }
     return Promise.reject(error);
   }
 );
 
-// Export both default and named export
 export default apiClient;
-export { apiClient };

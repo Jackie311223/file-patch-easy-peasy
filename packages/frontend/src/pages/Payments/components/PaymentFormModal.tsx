@@ -1,28 +1,28 @@
-import React, { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient, UseQueryResult } from "@tanstack/react-query";
+import React, { useState, useEffect, useCallback } from "react"; // Đã thêm useCallback, useEffect
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Dialog, { DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/Dialog";
-import Button from "@/ui/Button";
-import Input from "@/ui/Input";
-import Label from "@/ui/Label";
+import { Button } from "@/ui/Button";
+import { Input } from "@/ui/Input";
+import { Label } from "@/ui/Label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/Select";
-import DatePicker from "@/ui/DatePicker";
-import Textarea from "@/ui/Textarea";
-import Spinner from "@/ui/Loading/Spinner";
-import { useToast } from "@/hooks/useToast";
+import DatePicker from "@/ui/DatePicker"; 
+import { Textarea } from "@/ui/Textarea";
+import { useToast } from "@/hooks/useToast"; 
 import { useAuth } from "@/hooks/useAuth";
-import { getPayments, createPayment, updatePaymentStatusApi, Payment, PaymentsResponse } from "@/api/paymentsApi";
-// Assuming useGetUsers is correctly defined and exported from bookingsApi or a dedicated usersApi
-import { useGetBookings, useGetUsers, Booking, BookingsResponse, User } from "@/api/bookingsApi"; 
-import { formatCurrency, formatDate } from "@/utils/formatters";
+import { createPayment, updatePayment, Payment, CreatePaymentPayload, UpdatePaymentPayload } from "@/api/paymentsApi"; 
+import { useGetBookings, useGetUsers, Booking, User } from "@/api/bookingsApi"; 
 import { z } from "zod";
-import { useForm, Controller, SubmitHandler, FieldValues } from "react-hook-form"; // Import FieldValues
+import { useForm, Controller, SubmitHandler } from "react-hook-form"; 
 import { zodResolver } from "@hookform/resolvers/zod";
 
 // Define Zod schema for validation
 const paymentSchemaBase = z.object({
   bookingId: z.string().min(1, "Booking is required"),
-  // Simplify amount handling: expect number, positive. Let RHF handle input conversion.
-  amount: z.number({ invalid_type_error: "Amount must be a number" }).positive("Amount must be positive"),
+  // Sửa schema cho amount để xử lý tốt hơn với react-hook-form và zodResolver
+  amount: z.coerce // Bắt đầu bằng coerce để Zod tự động chuyển đổi giá trị đầu vào
+    .number({ invalid_type_error: "Amount must be a valid number" })
+    .positive({ message: "Amount must be positive" })
+    .optional(), // Cho phép trường này rỗng ban đầu, validation cuối cùng sẽ ở .refine
   method: z.string().min(1, "Payment method is required"),
   paymentDate: z.date({ required_error: "Payment date is required" }),
   notes: z.string().optional(),
@@ -30,35 +30,31 @@ const paymentSchemaBase = z.object({
 
 const hotelCollectSchema = paymentSchemaBase.extend({
   paymentType: z.literal("HOTEL_COLLECT"),
-  collectedById: z.string().min(1, "Collector is required"),
-  receivedFrom: z.string().optional(), // Not required for HOTEL_COLLECT
+  collectedById: z.string({required_error: "Collector is required"}).min(1, "Collector is required"),
+  receivedFrom: z.string().optional(), 
 });
 
 const otaCollectSchema = paymentSchemaBase.extend({
   paymentType: z.literal("OTA_COLLECT"),
-  receivedFrom: z.string().min(1, "Received from is required"),
-  collectedById: z.string().optional(), // Not required for OTA_COLLECT
+  receivedFrom: z.string({required_error: "Received from is required"}).min(1, "Received from is required"),
+  collectedById: z.string().optional(),
 });
 
-// Discriminated union schema
 const paymentSchema = z.discriminatedUnion("paymentType", [
   hotelCollectSchema,
   otaCollectSchema,
-]);
+]).refine(data => data.amount !== undefined && data.amount > 0, {
+    message: "Amount is required and must be positive for submission.",
+    path: ["amount"], 
+});
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
-
-// Define the type for the data sent to the mutation
-interface PaymentMutationData extends Omit<PaymentFormData, 'paymentDate'> {
-  paymentDate: string; // Expect ISO string for API
-  tenantId?: string;
-}
 
 interface PaymentFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  paymentType: "HOTEL_COLLECT" | "OTA_COLLECT";
+  paymentType: "HOTEL_COLLECT" | "OTA_COLLECT"; 
   editPayment?: Payment | null;
 }
 
@@ -66,129 +62,181 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  paymentType,
+  paymentType: initialPaymentType, 
   editPayment,
 }) => {
   const { user } = useAuth();
-  const { toast } = useToast();
+  // Sửa: Giả sử useToast trả về { toast: (props: ToastProps) => void; }
+  const { toast } = useToast(); 
   const queryClient = useQueryClient();
 
-  // Define default values matching PaymentFormData structure
-  const getDefaultValues = (payment?: Payment | null): Partial<PaymentFormData> => { // Use Partial for initial state
-    if (payment) {
-      return {
-        paymentType: payment.paymentType || paymentType,
-        bookingId: payment.booking?.bookingCode || "", // Or payment.bookingId if available
-        amount: payment.amount || undefined, // Use undefined for number input
-        method: payment.method || "",
-        paymentDate: payment.paymentDate ? new Date(payment.paymentDate) : new Date(),
-        notes: payment.notes || "",
-        collectedById: payment.collectedBy?.id || "",
-        receivedFrom: payment.receivedFrom || "",
+  const isEditMode = !!editPayment && !!editPayment.id;
+
+  const getDefaultValues = useCallback((paymentToEdit?: Payment | null): PaymentFormData => {
+    const typeToUse = paymentToEdit?.paymentType || initialPaymentType;
+    let defaultValues: PaymentFormData;
+
+    if (typeToUse === "HOTEL_COLLECT") {
+      defaultValues = {
+        paymentType: "HOTEL_COLLECT",
+        bookingId: paymentToEdit?.booking?.id || "",
+        amount: paymentToEdit?.amount ?? undefined, 
+        method: paymentToEdit?.method || "",
+        paymentDate: paymentToEdit?.paymentDate ? new Date(paymentToEdit.paymentDate) : new Date(),
+        notes: paymentToEdit?.notes || "",
+        collectedById: paymentToEdit?.collectedBy?.id || user?.id || "", 
+        receivedFrom: paymentToEdit?.receivedFrom || undefined,
       };
-    } else {
-      return {
-        paymentType: paymentType,
-        bookingId: "",
-        amount: undefined, // Use undefined for number input initial state
-        method: "",
-        paymentDate: new Date(),
-        notes: "",
-        collectedById: "",
-        receivedFrom: "",
+    } else { // OTA_COLLECT
+      defaultValues = {
+        paymentType: "OTA_COLLECT",
+        bookingId: paymentToEdit?.booking?.id || "",
+        amount: paymentToEdit?.amount ?? undefined,
+        method: paymentToEdit?.method || "",
+        paymentDate: paymentToEdit?.paymentDate ? new Date(paymentToEdit.paymentDate) : new Date(),
+        notes: paymentToEdit?.notes || "",
+        receivedFrom: paymentToEdit?.receivedFrom || "", 
+        collectedById: paymentToEdit?.collectedBy?.id || undefined,
       };
     }
-  };
-
+    return defaultValues;
+  }, [initialPaymentType, user?.id]);
+  
   const { 
     handleSubmit, 
     control, 
     register, 
     reset, 
     watch,
+    setValue, 
+    getValues, // Thêm getValues
     formState: { errors, isSubmitting }
-  } = useForm<PaymentFormData>({
-    resolver: zodResolver(paymentSchema), // Zod handles the schema
+  } = useForm<PaymentFormData>({ 
+    resolver: zodResolver(paymentSchema), 
     defaultValues: getDefaultValues(editPayment),
+    mode: 'onChange', 
   });
 
   const watchedPaymentType = watch("paymentType");
 
-  // Fetch bookings - Correctly handle the response structure
-  const { data: bookingsResponse, isLoading: isLoadingBookings } = useGetBookings({ status: 'CONFIRMED', limit: 100 });
-  const bookings: Booking[] = bookingsResponse?.data || [];
-
-  // Fetch users (collectors) - Assuming useGetUsers hook exists and returns { data: User[] }
-  const { data: usersResponse, isLoading: isLoadingUsers } = useGetUsers(); // Add params if needed
-  const users: User[] = usersResponse?.data || [];
-
-  // Correct the mutation function type
-  const createPaymentMutation = useMutation<Payment, Error, PaymentMutationData>({
-    mutationFn: createPayment, // createPayment should expect PaymentMutationData
-    onSuccess: () => {
-      toast({ title: "Payment Created", variant: "success" });
-      onSuccess();
-      reset(getDefaultValues(null)); // Reset form on success with default empty values
-    },
-    onError: (error: any) => {
-      toast({ title: "Error Creating Payment", description: error.message, variant: "destructive" });
-    },
-  });
-
-  // Add mutation for updating payment if needed
-  // const updatePaymentMutation = useMutation(...);
-
-  // Correct the type for the onSubmit handler
-  const onSubmit: SubmitHandler<PaymentFormData> = (data) => {
-    // Ensure amount is a number before submission if needed, though Zod should handle it
-    const submissionData: PaymentMutationData = {
-      ...data,
-      amount: Number(data.amount), // Explicitly ensure amount is number
-      paymentDate: data.paymentDate.toISOString(), // Convert Date to ISO string here
-      tenantId: user?.tenantId,
-    };
-    console.log("Submitting data:", submissionData);
-    // if (editPayment) {
-    //   updatePaymentMutation.mutate({ ...submissionData, id: editPayment.id });
-    // } else {
-      createPaymentMutation.mutate(submissionData);
-    // }
-  };
+  useEffect(() => {
+    if (isOpen) { 
+        const defaultVals = getDefaultValues(editPayment);
+        reset(defaultVals);
+    }
+  }, [editPayment, isOpen, reset, getDefaultValues]); 
 
   useEffect(() => {
-    // Reset form when modal opens or editPayment changes
-    reset(getDefaultValues(editPayment));
-  }, [editPayment, reset, isOpen]); // Depend on isOpen to reset when modal opens
+    if (isOpen) { 
+        if (watchedPaymentType === 'HOTEL_COLLECT') {
+            setValue('receivedFrom', undefined, { shouldValidate: false }); 
+            if (!isEditMode && user?.id && getValues('collectedById') === undefined) { 
+                setValue('collectedById', user.id, { shouldValidate: true });
+            }
+        } else if (watchedPaymentType === 'OTA_COLLECT') {
+            setValue('collectedById', undefined, { shouldValidate: false }); 
+        }
+    }
+  }, [watchedPaymentType, setValue, isOpen, isEditMode, user?.id, getValues, reset]);
 
-  const paymentMethods = ["CASH", "BANK_TRANSFER", "MOMO", "9PAY", "ONEPAY", "OTA_TRANSFER", "BANK_PERSONAL"];
+
+  const { data: bookingsResponse, isLoading: isLoadingBookings } = useGetBookings({ status: 'CONFIRMED', limit: 1000 }); 
+  const bookings: Booking[] = bookingsResponse?.data || [];
+
+  const { data: usersResponse, isLoading: isLoadingUsers } = useGetUsers({ limit: 100 }); 
+  const users: User[] = usersResponse?.data || [];
+
+  const mutationOptions = {
+    onSuccess: () => {
+      // Sửa: toast nhận một object props, sử dụng 'description' và 'variant' (nếu ToastProps định nghĩa vậy)
+      toast({ 
+        title: isEditMode ? "Payment Updated" : "Payment Created", 
+        description: "Operation successful.", 
+        variant: "success" 
+      });
+      queryClient.invalidateQueries({ queryKey: ['payments'] }); 
+      onSuccess();
+      onClose(); 
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: `Error ${isEditMode ? "Updating" : "Creating"} Payment`, 
+        description: error.message || "An unexpected error occurred.", 
+        variant: "destructive" 
+      });
+    },
+  };
+
+  const createPaymentMutation = useMutation<Payment, Error, CreatePaymentPayload>({
+    mutationFn: createPayment,
+    ...mutationOptions,
+  });
+  
+  const updatePaymentMutation = useMutation<Payment, Error, { id: string; data: UpdatePaymentPayload } >({
+    mutationFn: (vars) => updatePayment(vars.id, vars.data), 
+    ...mutationOptions,
+  });
+
+  const onSubmitHandler: SubmitHandler<PaymentFormData> = (data) => { 
+    // Zod refine đã đảm bảo amount là number > 0 nếu form hợp lệ và được submit
+    // Tuy nhiên, data.amount vẫn có thể là undefined ở đây nếu refine không chạy hoặc optional không được xử lý đúng
+    // Nên thêm một check nữa hoặc đảm bảo refine của Zod hoạt động như mong đợi
+    if (typeof data.amount !== 'number' || data.amount <= 0) { 
+        toast({title: "Validation Error", description: "Amount is required and must be positive.", variant: "destructive"});
+        return;
+    }
+
+    const baseData = {
+      bookingId: data.bookingId,
+      amount: data.amount, 
+      method: data.method,
+      paymentDate: data.paymentDate.toISOString().split('T')[0], 
+      notes: data.notes,
+      paymentType: data.paymentType,
+      tenantId: user?.tenantId,
+      collectedById: data.paymentType === "HOTEL_COLLECT" ? data.collectedById : undefined,
+      receivedFrom: data.paymentType === "OTA_COLLECT" ? data.receivedFrom : undefined,
+    };
+    
+    if (isEditMode && editPayment?.id) {
+      updatePaymentMutation.mutate({ 
+        id: editPayment.id, 
+        data: baseData as UpdatePaymentPayload 
+      });
+    } else {
+      createPaymentMutation.mutate(baseData as CreatePaymentPayload); 
+    }
+  };
+ 
+  const currentMutation = isEditMode ? updatePaymentMutation : createPaymentMutation;
+  const paymentMethods = ["CASH", "BANK_TRANSFER", "MOMO", "9PAY", "ONEPAY", "OTA_TRANSFER", "BANK_PERSONAL"]; 
 
   return (
-    <Dialog isOpen={isOpen} onClose={onClose}>
+    <Dialog open={isOpen} onOpenChange={(openValue) => !openValue && onClose()}> 
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editPayment ? "Edit Payment" : "Create New Payment"}</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edit Payment" : "Create New Payment"}</DialogTitle>
         </DialogHeader>
-        {/* Use the form element with the correct onSubmit handler */}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
-          {/* Booking */}
+        <form onSubmit={handleSubmit(onSubmitHandler)} className="space-y-4 py-4">
+          <input type="hidden" {...register("paymentType")} />
+
           <div className="space-y-1">
             <Label htmlFor="bookingId">Booking</Label>
             <Controller
               name="bookingId"
               control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id="bookingId">
+                <Select onValueChange={field.onChange} value={field.value || ""} >
+                  <SelectTrigger id="bookingId" className={errors.bookingId ? "border-red-500" : ""} disabled={isEditMode}>
                     <SelectValue placeholder="Select a booking" />
                   </SelectTrigger>
                   <SelectContent>
                     {isLoadingBookings ? (
-                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      <SelectItem value="loading" disabled>Loading bookings...</SelectItem>
                     ) : (
                       bookings.map((booking) => (
-                        // Use booking.id if it's the actual ID, or bookingCode if that's expected
                         <SelectItem key={booking.id} value={booking.id}> 
-                          {booking.bookingCode} - {booking.guestName}
+                          {booking.guestName} (Code: {booking.id.substring(0,8)}...)
                         </SelectItem>
                       ))
                     )}
@@ -196,14 +244,13 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 </Select>
               )}
             />
-            {errors.bookingId && <p className="text-sm text-red-600">{errors.bookingId.message}</p>}
+            {errors.bookingId && <p className="text-xs text-red-500 mt-1">{errors.bookingId.message}</p>}
           </div>
 
-          {/* Amount */}
           <div className="space-y-1">
             <Label htmlFor="amount">Amount</Label>
             <Controller
-              name="amount"
+              name="amount" 
               control={control}
               render={({ field }) => (
                 <Input 
@@ -211,25 +258,24 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                   type="number" 
                   step="any" 
                   placeholder="Enter amount"
+                  className={errors.amount ? "border-red-500" : ""}
                   {...field}
-                  // RHF handles valueAsNumber, Zod preprocess might be redundant now
-                  onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)}
-                  value={field.value ?? ''} // Handle undefined for empty input
+                  onChange={event => field.onChange(event.target.value === '' ? undefined : parseFloat(event.target.value))}
+                  value={field.value === undefined ? '' : String(field.value)} 
                 />
               )}
             />
-            {errors.amount && <p className="text-sm text-red-600">{errors.amount.message}</p>}
+            {errors.amount && <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>}
           </div>
 
-          {/* Method */}
           <div className="space-y-1">
             <Label htmlFor="method">Payment Method</Label>
             <Controller
               name="method"
               control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id="method">
+                <Select onValueChange={field.onChange} value={field.value || ""}>
+                  <SelectTrigger id="method" className={errors.method ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select method" />
                   </SelectTrigger>
                   <SelectContent>
@@ -240,10 +286,9 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 </Select>
               )}
             />
-            {errors.method && <p className="text-sm text-red-600">{errors.method.message}</p>}
+            {errors.method && <p className="text-xs text-red-500 mt-1">{errors.method.message}</p>}
           </div>
 
-          {/* Payment Date */}
           <div className="space-y-1">
             <Label htmlFor="paymentDate">Payment Date</Label>
             <Controller
@@ -253,13 +298,13 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 <DatePicker 
                   value={field.value} 
                   onChange={field.onChange} 
+                  className={errors.paymentDate ? "!border-red-500" : ""} 
                 />
               )}
             />
-            {errors.paymentDate && <p className="text-sm text-red-600">{errors.paymentDate.message}</p>}
+            {errors.paymentDate && <p className="text-xs text-red-500 mt-1">{errors.paymentDate.message}</p>}
           </div>
 
-          {/* Conditional Fields based on paymentType */}
           {watchedPaymentType === "HOTEL_COLLECT" && (
             <div className="space-y-1">
               <Label htmlFor="collectedById">Collected By</Label>
@@ -268,23 +313,22 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value || ""}>
-                    <SelectTrigger id="collectedById">
+                    <SelectTrigger id="collectedById" className={errors.collectedById ? "border-red-500" : ""}>
                       <SelectValue placeholder="Select collector" />
                     </SelectTrigger>
                     <SelectContent>
                       {isLoadingUsers ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        <SelectItem value="loading" disabled>Loading users...</SelectItem>
                       ) : (
                         users.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                          <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem> 
                         ))
                       )}
                     </SelectContent>
                   </Select>
                 )}
               />
-              {/* Ensure error message is displayed correctly for optional fields in union */}
-              {errors.collectedById && <p className="text-sm text-red-600">{errors.collectedById.message}</p>}
+              {errors.collectedById && <p className="text-xs text-red-500 mt-1">{errors.collectedById.message}</p>}
             </div>
           )}
 
@@ -295,26 +339,26 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 id="receivedFrom" 
                 {...register("receivedFrom")} 
                 placeholder="e.g., Booking.com, Agoda"
+                className={errors.receivedFrom ? "border-red-500" : ""}
               />
-              {/* Ensure error message is displayed correctly for optional fields in union */}
-              {errors.receivedFrom && <p className="text-sm text-red-600">{errors.receivedFrom.message}</p>}
+              {errors.receivedFrom && <p className="text-xs text-red-500 mt-1">{errors.receivedFrom.message}</p>}
             </div>
           )}
 
-          {/* Notes */}
           <div className="space-y-1">
             <Label htmlFor="notes">Notes (Optional)</Label>
             <Textarea 
               id="notes" 
               {...register("notes")} 
               placeholder="Add any relevant notes"
+              className="min-h-[80px]" 
             />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={isSubmitting || createPaymentMutation.isPending}>
-              {isSubmitting || createPaymentMutation.isPending ? "Saving..." : editPayment ? "Update Payment" : "Create Payment"}
+            <Button type="button" variant="outline" onClick={onClose} disabled={currentMutation.isPending || isSubmitting}>Cancel</Button>
+            <Button type="submit" disabled={currentMutation.isPending || isSubmitting || (isEditMode && !updatePaymentMutation.mutate)}>
+              {currentMutation.isPending ? "Saving..." : isEditMode ? "Update Payment" : "Create Payment"}
             </Button>
           </DialogFooter>
         </form>
@@ -324,4 +368,3 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
 };
 
 export default PaymentFormModal;
-

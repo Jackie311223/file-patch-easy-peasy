@@ -5,7 +5,8 @@ import classNames from 'classnames';
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
 
-const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+// Thay đổi ở đây: export trực tiếp const Textarea
+export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, ...props }, ref) => {
     return (
       <textarea
@@ -21,5 +22,5 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
 );
 Textarea.displayName = 'Textarea';
 
-export default Textarea;
-
+// Bỏ dòng 'export default Textarea;' nếu bạn muốn sử dụng named export như trên
+// export default Textarea;

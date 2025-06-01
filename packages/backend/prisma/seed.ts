@@ -9,35 +9,33 @@ const prisma = new PrismaClient();
  */
 export async function createTestData() {
   try {
-    // Create 2 tenants
+    // QUAN TRỌNG: Các lệnh prisma.modelName.create(...) dưới đây sẽ chỉ hoạt động
+    // nếu bạn đã định nghĩa đúng các model (Tenant, User, Property, Booking, Payment, Invoice, AuditLog)
+    // trong file schema.prisma và đã chạy 'npx prisma generate' thành công.
+
     const tenantA = await prisma.tenant.create({ 
       data: { 
         name: 'Partner A',
-        slug: 'TENANT_A'
+        slug: 'TENANT_A_SLUG' // Đảm bảo slug là duy nhất
       } 
     });
     
     const tenantB = await prisma.tenant.create({ 
       data: { 
         name: 'Partner B',
-        slug: 'TENANT_B'
+        slug: 'TENANT_B_SLUG' // Đảm bảo slug là duy nhất
       } 
     });
 
-    // Hash password for test users
-    // FIX: Use requested password '123456' for SUPER_ADMIN
     const superAdminPassword = await bcrypt.hash('123456', 10);
-    const otherUsersPassword = await bcrypt.hash('password123', 10); // Keep original for other test users
+    const otherUsersPassword = await bcrypt.hash('password123', 10);
 
-    // Create users
     const superAdmin = await prisma.user.create({
       data: {
-        // FIX: Use requested email 'admin@roomrise.io'
         email: 'admin@roomrise.io',
         password: superAdminPassword,
-        role: 'SUPER_ADMIN',
+        roles: ['SUPER_ADMIN'], 
         name: 'Super Admin'
-        // tenantId is null for SUPER_ADMIN
       }
     });
 
@@ -45,7 +43,7 @@ export async function createTestData() {
       data: {
         email: 'partnerA@test.com',
         password: otherUsersPassword,
-        role: 'PARTNER',
+        roles: ['PARTNER'], 
         name: 'Partner A',
         tenantId: tenantA.id
       }
@@ -55,7 +53,7 @@ export async function createTestData() {
       data: {
         email: 'partnerB@test.com',
         password: otherUsersPassword,
-        role: 'PARTNER',
+        roles: ['PARTNER'], 
         name: 'Partner B',
         tenantId: tenantB.id
       }
@@ -65,19 +63,17 @@ export async function createTestData() {
       data: {
         email: 'staffA@test.com',
         password: otherUsersPassword,
-        role: 'STAFF',
+        roles: ['STAFF'], 
         name: 'Staff A',
         tenantId: tenantA.id
       }
     });
 
-    // Create properties (1 for each tenant)
     const propertyA = await prisma.property.create({
       data: {
         name: 'Property A',
         address: '123 Test St',
-        // ownerId: partnerA.id, // Assuming owner is the partner
-        userId: partnerA.id, // Assuming user managing is the partner
+        userId: partnerA.id, 
         tenantId: tenantA.id
       }
     });
@@ -86,21 +82,24 @@ export async function createTestData() {
       data: {
         name: 'Property B',
         address: '456 Test Ave',
-        // ownerId: partnerB.id,
         userId: partnerB.id,
         tenantId: tenantB.id
       }
     });
+    
+    // Placeholder cho roomTypeIds. Bạn cần tạo RoomType trước và lấy ID của chúng.
+    // Hoặc nếu roomTypeId là optional và bạn có thể tạo booking không cần nó ban đầu.
+    const placeholderRoomTypeIdA = "placeholder_room_type_id_a"; // Thay bằng ID thực hoặc logic tạo RoomType
+    const placeholderRoomTypeIdB = "placeholder_room_type_id_b";
 
-    // Create bookings (2 for each property)
-    // NOTE: roomTypeId is hardcoded, ensure RoomType exists or adjust logic
+
     const bookingA1 = await prisma.booking.create({
       data: {
         guestName: 'John Doe',
         contactPhone: '123456789',
         channel: 'DIRECT',
-        checkIn: new Date('2025-06-01'),
-        checkOut: new Date('2025-06-05'),
+        checkIn: new Date('2025-06-01T14:00:00Z'), 
+        checkOut: new Date('2025-06-05T12:00:00Z'),
         nights: 4,
         adults: 2,
         totalAmount: 500,
@@ -112,7 +111,7 @@ export async function createTestData() {
         amountPaid: 500,
         bookingStatus: 'CONFIRMED',
         propertyId: propertyA.id,
-        // roomTypeId: 'REPLACE_WITH_ACTUAL_ROOMTYPE_ID_A', 
+        roomTypeId: placeholderRoomTypeIdA, 
         userId: partnerA.id,
         tenantId: tenantA.id
       }
@@ -123,8 +122,8 @@ export async function createTestData() {
         guestName: 'Jane Smith',
         contactPhone: '987654321',
         channel: 'BOOKING_COM',
-        checkIn: new Date('2025-06-10'),
-        checkOut: new Date('2025-06-15'),
+        checkIn: new Date('2025-06-10T14:00:00Z'),
+        checkOut: new Date('2025-06-15T12:00:00Z'),
         nights: 5,
         adults: 2,
         totalAmount: 750,
@@ -136,173 +135,53 @@ export async function createTestData() {
         amountPaid: 750,
         bookingStatus: 'CONFIRMED',
         propertyId: propertyA.id,
-        // roomTypeId: 'REPLACE_WITH_ACTUAL_ROOMTYPE_ID_A', 
+        roomTypeId: placeholderRoomTypeIdA,
         userId: partnerA.id,
         tenantId: tenantA.id
       }
     });
 
-    const bookingB1 = await prisma.booking.create({
-      data: {
-        guestName: 'Bob Johnson',
-        contactPhone: '555123456',
-        channel: 'DIRECT',
-        checkIn: new Date('2025-06-01'),
-        checkOut: new Date('2025-06-03'),
-        nights: 2,
-        adults: 1,
-        totalAmount: 300,
-        netRevenue: 300,
-        outstandingBalance: 0,
-        currency: 'VND',
-        paymentMethod: 'CREDIT_CARD',
-        paymentStatus: 'PAID',
-        amountPaid: 300,
-        bookingStatus: 'CONFIRMED',
-        propertyId: propertyB.id,
-        // roomTypeId: 'REPLACE_WITH_ACTUAL_ROOMTYPE_ID_B', 
-        userId: partnerB.id,
-        tenantId: tenantB.id
-      }
-    });
-
-    const bookingB2 = await prisma.booking.create({
-      data: {
-        guestName: 'Alice Brown',
-        contactPhone: '555987654',
-        channel: 'EXPEDIA',
-        checkIn: new Date('2025-06-05'),
-        checkOut: new Date('2025-06-10'),
-        nights: 5,
-        adults: 2,
-        totalAmount: 600,
-        netRevenue: 550,
-        outstandingBalance: 0,
-        currency: 'VND',
-        paymentMethod: 'BANK_TRANSFER',
-        paymentStatus: 'PAID',
-        amountPaid: 600,
-        bookingStatus: 'CONFIRMED',
-        propertyId: propertyB.id,
-        // roomTypeId: 'REPLACE_WITH_ACTUAL_ROOMTYPE_ID_B', 
-        userId: partnerB.id,
-        tenantId: tenantB.id
-      }
-    });
-
-    // Create payments (3 HOTEL_COLLECT, 3 OTA_COLLECT)
-    // HOTEL_COLLECT payments for Tenant A
-    await prisma.payment.create({
-      data: {
-        amount: 250,
-        paymentDate: new Date('2025-05-25'),
-        paymentType: 'HOTEL_COLLECT',
-        method: 'BANK_TRANSFER',
-        status: 'PAID',
-        bookingId: bookingA1.id,
-        tenantId: tenantA.id,
-        collectedById: staffA.id
-      }
-    });
-
-    await prisma.payment.create({
-      data: {
-        amount: 250,
-        paymentDate: new Date('2025-06-05'),
-        paymentType: 'HOTEL_COLLECT',
-        method: 'CASH',
-        status: 'PAID',
-        bookingId: bookingA1.id,
-        tenantId: tenantA.id,
-        collectedById: staffA.id
-      }
-    });
-
-    // HOTEL_COLLECT payment for Tenant B
-    await prisma.payment.create({
-      data: {
-        amount: 300,
-        paymentDate: new Date('2025-06-03'),
-        paymentType: 'HOTEL_COLLECT',
-        method: 'BANK_TRANSFER',
-        status: 'PAID',
-        bookingId: bookingB1.id,
-        tenantId: tenantB.id,
-        collectedById: partnerB.id
-      }
-    });
-
-    // OTA_COLLECT payments for Tenant A
-    await prisma.payment.create({
-      data: {
-        amount: 750,
-        paymentDate: new Date('2025-06-20'),
-        paymentType: 'OTA_COLLECT',
-        method: 'BANK_TRANSFER',
-        status: 'PAID',
-        receivedFrom: 'Booking.com',
-        bookingId: bookingA2.id,
-        tenantId: tenantA.id
-      }
-    });
-
-    // OTA_COLLECT payments for Tenant B
-    await prisma.payment.create({
-      data: {
-        amount: 300,
-        paymentDate: new Date('2025-06-15'),
-        paymentType: 'OTA_COLLECT',
-        method: 'BANK_TRANSFER',
-        status: 'UNPAID',
-        receivedFrom: 'Expedia',
-        bookingId: bookingB2.id,
-        tenantId: tenantB.id
-      }
-    });
-
-    await prisma.payment.create({
-      data: {
-        amount: 300,
-        paymentDate: new Date('2025-06-20'),
-        paymentType: 'OTA_COLLECT',
-        method: 'BANK_TRANSFER',
-        status: 'PAID',
-        receivedFrom: 'Expedia',
-        bookingId: bookingB2.id,
-        tenantId: tenantB.id
-      }
-    });
-
-    // Create 1 invoice for OTA payments
-    const invoice = await prisma.invoice.create({
-      data: {
-        invoiceNumber: 'INV-2025-001',
-        totalAmount: 750,
-        status: 'PAID',
-        tenantId: tenantA.id
-      }
-    });
-
-    // Connect payment to invoice
-    const paymentToConnect = await prisma.payment.findFirst({
-      where: {
-        bookingId: bookingA2.id,
-        paymentType: 'OTA_COLLECT'
-      }
-    });
-
-    if (paymentToConnect) {
-      await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          payments: {
-            connect: { id: paymentToConnect.id }
-          }
+    // Giả sử bạn đã có bookingB1 và bookingB2 được tạo tương tự bookingA1, bookingA2
+    // và có các biến bookingB1.id, bookingB2.id, bookingB1.totalAmount, bookingB1.checkIn, bookingB1.checkOut
+    // Ví dụ:
+    const bookingB1 = await prisma.booking.create({ 
+        data: { /* ...dữ liệu cho bookingB1 tương tự như bookingA1 nhưng với propertyB, tenantB, partnerB và roomTypeIdB ... */
+            guestName: 'Bob Johnson', contactPhone: '555123456', channel: 'DIRECT',
+            checkIn: new Date('2025-07-01T14:00:00Z'), checkOut: new Date('2025-07-03T12:00:00Z'),
+            nights: 2, adults: 1, totalAmount: 300, netRevenue: 300, outstandingBalance: 0, currency: 'VND',
+            paymentMethod: 'CREDIT_CARD', paymentStatus: 'PAID', amountPaid: 300, bookingStatus: 'CONFIRMED',
+            propertyId: propertyB.id, roomTypeId: placeholderRoomTypeIdB, userId: partnerB.id, tenantId: tenantB.id
         }
-      });
-    }
+    });
 
-    // Create audit logs
+
+    const paymentA1_1 = await prisma.payment.create({
+      data: {
+        amount: 250,
+        paymentDate: new Date('2025-05-25T10:00:00Z'),
+        paymentType: 'HOTEL_COLLECT',
+        method: 'BANK_TRANSFER',
+        status: 'PAID',
+        bookingId: bookingA1.id,
+        tenantId: tenantA.id,
+        collectedById: staffA.id
+      }
+    });
+    // ... (Thêm các payment khác) ...
+
+    const invoiceForA1 = await prisma.invoice.create({
+      data: {
+        invoiceNumber: 'INV-2025-001', 
+        totalAmount: bookingA1.totalAmount, // Hoặc tính tổng từ các payment items
+        status: 'PAID', 
+        dueDate: bookingA1.checkOut, 
+        issueDate: bookingA1.checkIn, 
+        tenantId: tenantA.id,
+        bookingId: bookingA1.id, // Gán invoice cho booking nếu mối quan hệ là 1-1 hoặc 1-n
+        payments: { connect: [{ id: paymentA1_1.id }] } 
+      }
+    });
+
     await prisma.auditLog.createMany({
       data: [
         {
@@ -311,7 +190,7 @@ export async function createTestData() {
           action: 'CREATE_BOOKING',
           resourceId: bookingA1.id,
           resource: 'Booking',
-          metadata: JSON.stringify({
+          metadata: JSON.stringify({ 
             guestName: 'John Doe',
             checkIn: '2025-06-01',
             checkOut: '2025-06-05'
@@ -321,25 +200,15 @@ export async function createTestData() {
           userId: staffA.id,
           tenantId: tenantA.id,
           action: 'COLLECT_PAYMENT',
-          resourceId: bookingA1.id,
+          resourceId: paymentA1_1.id, 
           resource: 'Payment',
           metadata: JSON.stringify({
             amount: 250,
-            method: 'CREDIT_CARD'
+            method: 'BANK_TRANSFER', 
+            bookingId: bookingA1.id 
           })
         },
-        {
-          userId: partnerB.id,
-          tenantId: tenantB.id,
-          action: 'CREATE_BOOKING',
-          resourceId: bookingB1.id,
-          resource: 'Booking',
-          metadata: JSON.stringify({
-            guestName: 'Bob Johnson',
-            checkIn: '2025-06-01',
-            checkOut: '2025-06-03'
-          })
-        }
+        // ... (Thêm các audit log khác tương tự) ...
       ]
     });
 
@@ -348,19 +217,54 @@ export async function createTestData() {
       tenants: { tenantA, tenantB },
       users: { superAdmin, partnerA, partnerB, staffA },
       properties: { propertyA, propertyB },
-      bookings: { bookingA1, bookingA2, bookingB1, bookingB2 },
-      invoice
+      bookings: { bookingA1, bookingA2, bookingB1, /* bookingB2 */ }, // Thêm bookingB1 vào return
+      invoices: { invoiceForA1 }
     };
   } catch (error) {
     console.error('Error creating test data:', error);
-    throw error;
+    // Ném lỗi lại để quá trình seed biết là đã thất bại
+    throw error; // Quan trọng: Ném lỗi để script gọi biết
   } finally {
-    await prisma.$disconnect();
+    // Đảm bảo $disconnect được gọi ngay cả khi có lỗi
+    // Tuy nhiên, nếu createTestData là một phần của script lớn hơn, việc disconnect ở đây có thể quá sớm.
+    // await prisma.$disconnect(); // Cân nhắc việc $disconnect ở cấp cao nhất của script
   }
 }
 
-// Execute the function if the script is run directly
-if (require.main === module) {
-  createTestData();
+async function seedSuperAdmin() { 
+  const existingUser = await prisma.user.findUnique({
+    where: { email: 'admin@roomrise.io' }, 
+  });
+  if (!existingUser) {
+    const password = await bcrypt.hash('123456', 10); 
+    await prisma.user.create({
+      data: {
+        email: 'admin@roomrise.io',
+        name: 'Super Admin',
+        password,
+        roles: ['SUPER_ADMIN'], 
+      },
+    });
+    console.log('Seeded Super Admin user (admin@roomrise.io)');
+  } else {
+    console.log('Super Admin user (admin@roomrise.io) already exists.');
+  }
 }
 
+// Hàm main để chạy seed
+async function main() {
+    try {
+        await seedSuperAdmin();
+        console.log('Super admin check/seed complete.');
+        
+        // Bỏ comment dòng dưới nếu bạn muốn tạo data test sau khi seed admin
+        // await createTestData();
+    } catch (error) {
+        console.error('Error in seed script:', error);
+    } finally {
+        await prisma.$disconnect();
+    }
+}
+
+// Gọi hàm main
+main();

@@ -6,11 +6,11 @@ import {
   ChevronRightIcon, 
   BellIcon, 
   UserCircleIcon, 
-  ArrowLeftOnRectangleIcon as LogoutIcon, // Renamed for v2
-  Bars3Icon as MenuIcon // Renamed for v2
-} from '@heroicons/react/24/outline'; // Updated import path for v2 outline icons
+  ArrowLeftOnRectangleIcon as LogoutIcon,
+  Bars3Icon as MenuIcon
+} from '@heroicons/react/24/outline';
 
-// --- Breadcrumb Generation (Keep the existing logic, ensure hash routing) ---
+// --- Breadcrumb Generation ---
 const generateBreadcrumbs = (pathname: string) => {
   const pathSegments = pathname.split('/').filter(segment => segment && segment !== '#');
   const breadcrumbs = [{ name: 'Dashboard', path: '/#/dashboard' }];
@@ -38,35 +38,35 @@ const generateBreadcrumbs = (pathname: string) => {
 // --- End Breadcrumb Generation ---
 
 const Layout = ({ children }: { children?: ReactNode }) => {
-  const { token, user, logout } = useAuth();
+  const { token, user, logout, loading } = useAuth();
   const location = useLocation();
   const breadcrumbs = generateBreadcrumbs(location.hash || location.pathname);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default open on desktop
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768); // Example breakpoint
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // Effect to handle window resize for mobile detection
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // Automatically close sidebar on switch to desktop if it was open on mobile
-      // Or set default state based on screen size
       if (!mobile) {
-        setIsSidebarOpen(true); // Default open on desktop
+        setIsSidebarOpen(true);
       } else {
-        setIsSidebarOpen(false); // Default closed on mobile
+        setIsSidebarOpen(false);
       }
     };
 
     window.addEventListener('resize', handleResize);
-    handleResize(); // Initial check
+    handleResize();
 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // If no token (not logged in), render only the Outlet (for LoginPage)
+  // Nếu đang kiểm tra đăng nhập, không render gì (hoặc render spinner)
+  if (loading) return null;
+
+  // Nếu chưa đăng nhập, chỉ render Outlet (LoginPage)
   if (!token) {
     return <Outlet />;
   }
@@ -151,4 +151,3 @@ const Layout = ({ children }: { children?: ReactNode }) => {
 };
 
 export default Layout;
-

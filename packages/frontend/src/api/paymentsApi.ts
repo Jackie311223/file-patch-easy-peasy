@@ -1,127 +1,165 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import apiClient from "./axios"; // Assuming axios instance is configured
+import apiClient from "./axios"; // Giả sử apiClient đã được cấu hình đúng
 
-// Define Payment type (adjust based on actual data structure)
-export interface Payment { // Export interface
+// Định nghĩa kiểu dữ liệu Payment (nguồn đáng tin cậy cho type Payment)
+export interface Payment {
   id: string;
-  booking: { bookingCode: string; guestName: string };
+  booking: { 
+    id: string; // Thường thì booking cũng có id riêng
+    bookingCode: string; 
+    guestName: string 
+  };
   amount: number;
   method: string;
-  paymentDate: string;
-  status: string;
+  paymentDate: string; // Nên là string dạng YYYY-MM-DD hoặc ISO string
+  status: string; // Nên là một union type cụ thể, ví dụ: 'PAID' | 'UNPAID' | 'PARTIALLY_PAID'
   paymentType: "HOTEL_COLLECT" | "OTA_COLLECT";
-  collectedBy?: { id: string; name: string }; // Add optional collector info
-  receivedFrom?: string; // Add optional source info
-  notes?: string; // Add optional notes field
-  // Add other relevant fields
+  collectedBy?: { id: string; name: string };
+  receivedFrom?: string;
+  notes?: string;
+  createdAt?: string; // Thêm nếu API trả về
+  updatedAt?: string; // Thêm nếu API trả về
 }
 
-// Define the expected response structure for getPayments
-export interface PaymentsResponse { // Export interface
+// Định nghĩa kiểu dữ liệu trả về khi lấy danh sách payments
+export interface PaymentsResponse {
   data: Payment[];
   total: number;
-  // Add other pagination/metadata if available
+  page?: number;    // Thêm nếu API trả về
+  limit?: number;   // Thêm nếu API trả về
+  totalPages?: number; // Thêm nếu API trả về
 }
 
-export interface GetPaymentsParams { // Export interface
+// Tham số cho việc lấy danh sách payments
+export interface GetPaymentsParams {
   propertyId?: string;
   status?: string;
   method?: string;
   ownerId?: string;
-  startDate?: string;
-  endDate?: string;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;   // YYYY-MM-DD
   paymentType?: "HOTEL_COLLECT" | "OTA_COLLECT";
   page?: number;
   limit?: number;
-  bookingId?: string; // Add bookingId here
+  bookingId?: string;
+  // Thêm các params khác nếu API hỗ trợ
 }
 
-// Mock function to get payments, returning the correct structure
+// Dữ liệu để tạo mới Payment
+// Dựa trên PaymentFormData nhưng loại bỏ các trường không cần thiết cho việc tạo mới
+// và chuyển đổi paymentDate thành string.
+export interface CreatePaymentPayload {
+  bookingId: string;
+  amount: number;
+  method: string;
+  paymentDate: string; // Format YYYY-MM-DD hoặc ISO string
+  notes?: string;
+  paymentType: "HOTEL_COLLECT" | "OTA_COLLECT";
+  collectedById?: string; // Bắt buộc nếu paymentType là HOTEL_COLLECT
+  receivedFrom?: string;  // Bắt buộc nếu paymentType là OTA_COLLECT
+  tenantId?: string;    // Thêm nếu API yêu cầu
+}
+
+// Dữ liệu để cập nhật Payment (thường là Partial của CreatePaymentPayload)
+export interface UpdatePaymentPayload extends Partial<Omit<CreatePaymentPayload, 'tenantId' | 'bookingId'>> {
+  // bookingId thường không được phép thay đổi khi update payment
+}
+
+
+// --- API Functions ---
+
+// Lấy danh sách payments từ API
 export const getPayments = async (params: GetPaymentsParams = {}): Promise<PaymentsResponse> => {
-  console.log("Mock getPayments called with params:", params);
-  // In a real app, fetch from `${config.apiUrl}/payments` with query params
-  // const response = await apiClient.get<PaymentsResponse>("/payments", { params });
-  // return response.data;
-
-  // Mock implementation returning the expected structure
-  await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
-  const mockPayments: Payment[] = [
-    // Add some mock payment data if needed for testing
-    { id: "pay1", booking: { bookingCode: "BK001", guestName: "Alice" }, amount: 100, method: "CASH", paymentDate: "2024-05-28", status: "PAID", paymentType: "HOTEL_COLLECT", collectedBy: { id: "user1", name: "Admin" } },
-    { id: "pay2", booking: { bookingCode: "BK002", guestName: "Bob" }, amount: 200, method: "OTA_TRANSFER", paymentDate: "2024-05-29", status: "UNPAID", paymentType: "OTA_COLLECT", receivedFrom: "Booking.com" },
-    { id: "pay3", booking: { bookingCode: "BK001", guestName: "Alice" }, amount: 50, method: "MOMO", paymentDate: "2024-05-30", status: "UNPAID", paymentType: "HOTEL_COLLECT", collectedBy: { id: "user2", name: "Staff" } },
-  ];
-  // Simple mock pagination/filtering (adjust as needed)
-  let filteredPayments = mockPayments;
-  if (params.bookingId) {
-    // Corrected syntax: added closing parenthesis for includes()
-    filteredPayments = filteredPayments.filter(p => (p.booking.bookingCode.includes(params.bookingId || "")) || p.id === params.bookingId); // Allow filtering by booking ID or code
-  }
-  if (params.status) {
-     filteredPayments = filteredPayments.filter(p => p.status === params.status);
-  }
-  // Add other filters if needed
-
-  const page = params.page || 1;
-  const limit = params.limit || 10;
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedData = filteredPayments.slice(startIndex, endIndex);
-
-  return {
-    data: paginatedData,
-    total: filteredPayments.length, // Total count before pagination
-  };
+  const response = await apiClient.get<PaymentsResponse>("/payments", { params });
+  return response.data;
 };
 
-// --- Mutations (Keep existing or add as needed) ---
-
-// Mock function to create a payment
-export const createPayment = async (paymentData: any): Promise<any> => {
-  console.log("Mock createPayment called with data:", paymentData);
-  // In a real app, POST to `${config.apiUrl}/payments`
-  // const response = await apiClient.post("/payments", paymentData);
-  // return response.data;
-  await new Promise(resolve => setTimeout(resolve, 100));
-  // Return a mock response
-  return { ...paymentData, id: `new_payment_${Date.now()}` }; 
+// Tạo mới payment
+export const createPayment = async (paymentData: CreatePaymentPayload): Promise<Payment> => {
+  const response = await apiClient.post<Payment>("/payments", paymentData);
+  return response.data;
 };
 
-// Mock function to update payment status
-export const updatePaymentStatusApi = async ({ paymentId, status }: { paymentId: string; status: string }): Promise<any> => {
-  console.log(`Mock updatePaymentStatusApi called for ID: ${paymentId}, Status: ${status}`);
-  await new Promise(resolve => setTimeout(resolve, 100));
-  return { id: paymentId, status }; // Return mock updated data
+// Cập nhật toàn bộ payment (PUT) hoặc một phần (PATCH)
+// Thêm hàm updatePayment để hoàn thiện CRUD
+export const updatePayment = async (paymentId: string, paymentData: UpdatePaymentPayload): Promise<Payment> => {
+  // Sử dụng PATCH nếu chỉ cập nhật một phần, PUT nếu cập nhật toàn bộ
+  const response = await apiClient.patch<Payment>(`/payments/${paymentId}`, paymentData); 
+  return response.data;
 };
 
-// Mock function to delete a payment
+
+// Cập nhật trạng thái payment
+export const updatePaymentStatusApi = async ({
+  paymentId,
+  status,
+}: {
+  paymentId: string;
+  status: string; // status nên là một union type cụ thể
+}): Promise<Payment> => {
+  const response = await apiClient.patch<Payment>(`/payments/${paymentId}/status`, { status });
+  return response.data;
+};
+
+// Xóa payment
 export const deletePaymentApi = async (paymentId: string): Promise<void> => {
-  console.log(`Mock deletePaymentApi called for ID: ${paymentId}`);
-  await new Promise(resolve => setTimeout(resolve, 100));
-  // No return value needed for delete
+  await apiClient.delete(`/payments/${paymentId}`);
 };
 
-// --- React Query Hooks for Mutations (Keep existing or add as needed) ---
+// --- React Query Hooks ---
+
+export const useGetPayments = (params?: GetPaymentsParams) => {
+  return useQuery<PaymentsResponse, Error, PaymentsResponse, readonly unknown[]>({ // Thêm kiểu cho queryKey
+    queryKey: ["payments", params || {}], // Đảm bảo params là object ổn định hoặc được serialize
+    queryFn: () => getPayments(params || {}),
+  });
+};
+
+export const useCreatePayment = () => {
+  const queryClient = useQueryClient();
+  return useMutation<Payment, Error, CreatePaymentPayload>({ // Sử dụng CreatePaymentPayload
+    mutationFn: createPayment,
+    onSuccess: (data, variables, context) => {
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      // Có thể thực hiện các hành động khác, ví dụ:
+      // queryClient.setQueryData(['payment', data.id], data);
+    },
+    // onError, onMutate có thể được thêm ở đây
+  });
+};
+
+// Hook để cập nhật payment
+export const useUpdatePayment = () => {
+    const queryClient = useQueryClient();
+    return useMutation<Payment, Error, { id: string; data: UpdatePaymentPayload }>({
+        mutationFn: (vars) => updatePayment(vars.id, vars.data),
+        onSuccess: (data, variables, context) => {
+            queryClient.invalidateQueries({ queryKey: ["payments"] });
+            queryClient.invalidateQueries({ queryKey: ["payment", variables.id] }); // Invalidate chi tiết payment
+        },
+    });
+};
 
 export const useUpdatePaymentStatus = () => {
   const queryClient = useQueryClient();
-  return useMutation<any, Error, { paymentId: string; status: string }>({
+  return useMutation<Payment, Error, { paymentId: string; status: string }>({
     mutationFn: updatePaymentStatusApi,
-    onSuccess: () => {
+    onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["payment", variables.paymentId] });
     },
-    // Add onError handling if needed
   });
 };
 
-export const useDeletePayment = () => {
+export const useDeletePayment = (onSuccessCallback?: () => void) => { // Cho phép truyền callback nếu cần
   const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
+  return useMutation<void, Error, string>({ // string là paymentId
     mutationFn: deletePaymentApi,
-    onSuccess: () => {
+    onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      if (onSuccessCallback) {
+        onSuccessCallback();
+      }
     },
-    // Add onError handling if needed
   });
 };
-

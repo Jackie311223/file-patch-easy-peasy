@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-// API base URL
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+// Sử dụng biến môi trường đúng chuẩn Vite
+const API_BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : 'http://localhost:3001/api';
 
 // Types
 export interface GetCalendarParams {

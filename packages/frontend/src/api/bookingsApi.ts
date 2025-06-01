@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient, UseQueryResult } from "@tanstack/react-query";
 import apiClient from "./axios";
 
-// Define Booking type (adjust based on actual data structure)
-export interface Booking { // Export interface
+// Định nghĩa kiểu dữ liệu Booking
+export interface Booking {
   id: string;
   bookingCode: string;
   guestName: string;
@@ -10,19 +10,19 @@ export interface Booking { // Export interface
   checkOutDate: string;
   status: string;
   propertyId: string;
-  roomId?: string; // Optional room ID
-  totalAmount?: number; // Optional total amount
-  // Add other relevant fields
+  roomId?: string;
+  totalAmount?: number;
+  // Thêm các trường khác nếu cần
 }
 
-// Define expected response structure for getBookings
-export interface BookingsResponse { // Export interface
+// Định nghĩa kiểu dữ liệu trả về khi lấy danh sách bookings
+export interface BookingsResponse {
   data: Booking[];
   total: number;
-  // Add other pagination/metadata if available
 }
 
-export interface GetBookingsParams { // Export interface
+// Tham số khi lấy danh sách bookings
+export interface GetBookingsParams {
   propertyId?: string;
   status?: string;
   startDate?: string;
@@ -32,81 +32,41 @@ export interface GetBookingsParams { // Export interface
   limit?: number;
 }
 
-// Define User type (adjust based on actual data structure)
+// Định nghĩa kiểu dữ liệu User
 export interface User {
   id: string;
   name: string;
   email: string;
-  role: string; // Example role
-  // Add other relevant fields
+  role: string;
 }
 
-// Define expected response structure for getUsers
+// Định nghĩa kiểu dữ liệu trả về khi lấy danh sách users
 export interface UsersResponse {
   data: User[];
   total: number;
 }
 
-// Mock function to get bookings
+// Lấy danh sách bookings từ API
 export const getBookings = async (params: GetBookingsParams = {}): Promise<BookingsResponse> => {
-  console.log("Mock getBookings called with params:", params);
-  // In a real app, fetch from `${config.apiUrl}/bookings` with query params
-  // const response = await apiClient.get<BookingsResponse>("/bookings", { params });
-  // return response.data;
-
-  // Mock implementation
-  await new Promise(resolve => setTimeout(resolve, 100));
-  const mockBookings: Booking[] = [
-    { id: "bk1", bookingCode: "BK001", guestName: "Alice", checkInDate: "2024-06-01", checkOutDate: "2024-06-05", status: "CONFIRMED", propertyId: "prop1" },
-    { id: "bk2", bookingCode: "BK002", guestName: "Bob", checkInDate: "2024-06-10", checkOutDate: "2024-06-12", status: "PENDING", propertyId: "prop1" },
-    { id: "bk3", bookingCode: "BK003", guestName: "Charlie", checkInDate: "2024-06-15", checkOutDate: "2024-06-20", status: "CONFIRMED", propertyId: "prop2" },
-  ];
-
-  // Simple mock filtering (adjust as needed)
-  let filteredBookings = mockBookings;
-  if (params.status) {
-    filteredBookings = filteredBookings.filter(b => b.status === params.status);
-  }
-  // Add other filters if needed
-
-  const page = params.page || 1;
-  const limit = params.limit || 10;
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedData = filteredBookings.slice(startIndex, endIndex);
-
-  return {
-    data: paginatedData,
-    total: filteredBookings.length,
-  };
+  const response = await apiClient.get<BookingsResponse>("/bookings", { params });
+  return response.data;
 };
 
-// Mock function to get users (e.g., staff for assigning tasks or payments)
+// Lấy danh sách users từ API
 export const getUsers = async (params: any = {}): Promise<UsersResponse> => {
-  console.log("Mock getUsers called with params:", params);
-  // In a real app, fetch from `/users` endpoint
-  // const response = await apiClient.get<UsersResponse>("/users", { params });
-  // return response.data;
-
-  await new Promise(resolve => setTimeout(resolve, 100));
-  const mockUsers: User[] = [
-    { id: "user1", name: "Staff Member 1", email: "staff1@example.com", role: "STAFF" },
-    { id: "user2", name: "Staff Member 2", email: "staff2@example.com", role: "STAFF" },
-    { id: "user3", name: "Admin User", email: "admin@example.com", role: "ADMIN" },
-  ];
-  return { data: mockUsers, total: mockUsers.length };
+  const response = await apiClient.get<UsersResponse>("/users", { params });
+  return response.data;
 };
 
 // --- React Query Hooks ---
 
 export const useGetBookings = (params?: GetBookingsParams) => {
   return useQuery<BookingsResponse, Error>({
-    queryKey: ["bookings", params], // Include params in queryKey
+    queryKey: ["bookings", params],
     queryFn: () => getBookings(params),
   });
 };
 
-// Hook to fetch users
 export const useGetUsers = (params?: any): UseQueryResult<UsersResponse, Error> => {
   return useQuery<UsersResponse, Error>({
     queryKey: ["users", params],
@@ -114,16 +74,14 @@ export const useGetUsers = (params?: any): UseQueryResult<UsersResponse, Error> 
   });
 };
 
-// --- Mutations (Add if needed, e.g., createBooking, updateBookingStatus) ---
+// --- Mutations ---
 
-// Example: Mock function to create a booking
+// Tạo mới booking
 export const createBooking = async (bookingData: any): Promise<Booking> => {
-  console.log("Mock createBooking called with data:", bookingData);
-  await new Promise(resolve => setTimeout(resolve, 100));
-  return { ...bookingData, id: `new_booking_${Date.now()}`, status: "PENDING" };
+  const response = await apiClient.post<Booking>("/bookings", bookingData);
+  return response.data;
 };
 
-// Example: React Query Hook for creating a booking
 export const useCreateBooking = () => {
   const queryClient = useQueryClient();
   return useMutation<Booking, Error, any>({
@@ -133,4 +91,3 @@ export const useCreateBooking = () => {
     },
   });
 };
-

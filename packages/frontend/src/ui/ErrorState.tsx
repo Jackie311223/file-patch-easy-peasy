@@ -1,5 +1,6 @@
-import React from 'react';
-import Button from '@/ui/Button';
+import React from 'react'; // Sửa 'mport' thành 'import'
+// Sửa dòng import này từ default import thành named import
+import { Button } from '@/ui/Button'; 
 
 interface ErrorStateProps {
   title?: string;
@@ -23,7 +24,7 @@ const ErrorState: React.FC<ErrorStateProps> = ({
       <p className="mt-1 text-sm text-gray-500">{message}</p>
       {onRetry && (
         <div className="mt-6">
-          <Button onClick={onRetry} variant="primary">
+          <Button onClick={onRetry} variant="primary"> {/* Giả sử Button của bạn chấp nhận prop 'variant' */}
             Try Again
           </Button>
         </div>
